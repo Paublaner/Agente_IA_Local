@@ -4,6 +4,8 @@ Agente de IA que **investiga un tema en internet y te devuelve un resumen con fu
 
 Funciona **100 % en local** con [Ollama](https://ollama.com): no usa ninguna API de pago y tus documentos no salen de tu ordenador.
 
+Además, el agente está publicado como **API REST (FastAPI)** para integrarlo en automatizaciones. La idea es que un robot de **UiPath** le reenvíe correos que piden un resumen y devuelva la respuesta al remitente.
+
 ## Qué sabe hacer
 
 | Herramienta | Qué hace |
@@ -14,11 +16,9 @@ Funciona **100 % en local** con [Ollama](https://ollama.com): no usa ninguna API
 | `leer_documento(nombre)` | Lee un documento de la carpeta `documentos/` (PDF, `.docx`, `.txt`, `.md`). |
 | `guardar_informe(titulo, contenido)` | Guarda el informe final en `informes/` como archivo Markdown. |
 
-Además, el agente **recuerda las conversaciones** aunque cierres el programa (memoria persistente en SQLite).
-
 ## Cómo funciona
 
-El agente es un grafo de LangGraph con dos nodos. El modelo decide si necesita una herramienta; si la pide, se ejecuta y el resultado vuelve al modelo. El bucle sigue hasta que el modelo responde sin pedir herramientas.
+El agente es un grafo de LangGraph con dos nodos. El modelo decide si necesita una herramienta; si la pide, se ejecuta y el resultado vuelve al modelo. El bucle sigue hasta que el modelo responde sin pedir herramientas, o hasta llegar al límite de pasos (`recursion_limit = 40`).
 
 ```mermaid
 flowchart LR
@@ -26,16 +26,58 @@ flowchart LR
     M -->|pide herramientas| H[node_herramientas<br/>ejecuta las tool_calls]
     H --> M
     M -->|responde sin herramientas| FIN([Fin])
-    M -.guarda el estado.-> DB[(memoria.db<br/>SqliteSaver)]
 ```
 
 - **`node_modelo`**: añade las instrucciones de sistema delante del historial y llama al modelo con las herramientas enlazadas (`bind_tools`).
 - **`node_herramientas`**: coge el último mensaje, ejecuta cada `tool_call` y devuelve los resultados como mensajes.
 - **`decidir`**: si el último mensaje tiene `tool_calls`, va a herramientas; si no, termina.
 
+## API para UiPath
+
+`api.py` publica el agente con FastAPI. El robot de UiPath lee el correo, llama a la API y es él quien envía la respuesta: la API no manda correos.
+
+```mermaid
+flowchart LR
+    C1[Correo entrante] --> U1[UiPath]
+    U1 -->|POST /procesar<br/>+ X-API-Key| API[FastAPI]
+    API --> G[Agente LangGraph]
+    G --> API
+    API -->|JSON| U2[UiPath]
+    U2 --> C2[Correo de respuesta]
+```
+
+**Petición** `POST /procesar` con la cabecera `X-API-Key`:
+
+```json
+{
+  "remitente": "persona@ejemplo.com",
+  "asunto": "Resumen",
+  "cuerpo_correo": "Resúmeme qué es LangGraph"
+}
+```
+
+**Respuesta:**
+
+```json
+{
+  "status": "completado",
+  "enviar_a": "persona@ejemplo.com",
+  "texto_resumido": "LangGraph es..."
+}
+```
+
+| Código | Cuándo |
+|---|---|
+| `200` | Resumen generado |
+| `401` / `403` | Clave de API incorrecta o ausente |
+| `500` | Fallo interno (Ollama apagado, límite de pasos...). El detalle se escribe en la terminal del servidor, no se envía al cliente. |
+
+Los saltos de línea del resumen llegan como `\n` dentro del JSON; UiPath los convierte en saltos reales al deserializarlo. El modelo local puede tardar varios minutos, así que hay que subir el timeout de la actividad HTTP Request.
+
 ## Tecnologías
 
-- **Python** + **LangGraph** (`StateGraph`, `MessagesState`, `SqliteSaver`)
+- **Python** + **LangGraph** (`StateGraph`, `MessagesState`)
+- **FastAPI** + **uvicorn** para la API, **python-dotenv** para la clave
 - **LangChain**: `ChatOllama`, `@tool`, `RecursiveCharacterTextSplitter`
 - **Ollama** en local: `qwen3` (modelo con herramientas) y `bge-m3` (embeddings)
 - **ChromaDB** como base de datos vectorial para el RAG
@@ -55,9 +97,15 @@ python -m venv .venv
 .venv\Scripts\activate        # en Windows
 pip install -r requirements.txt
 
-# 3. Ejecutar el agente
-python agente_grafo.py
+# 3. Crear un archivo .env con la clave de la API (git lo ignora)
+#    API_KEY=una_clave_larga_y_aleatoria
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+
+# 4. Arrancar la API
+uvicorn api:app --reload
 ```
+
+Para probarla, abre `http://127.0.0.1:8000/docs`, pulsa **Authorize**, pega tu clave y usa **Try it out** en `/procesar`.
 
 Ejemplos de lo que le puedes pedir:
 
@@ -85,13 +133,23 @@ Resultado: copia los 19 principios igual que en la fuente y solo dice que ha gua
 
 **Informe solo si se pide.** El agente guarda informes únicamente cuando el usuario lo pide, para no llenar la carpeta con archivos que nadie quería.
 
+**Sin memoria en la API.** Durante el desarrollo el agente tenía memoria persistente con `SqliteSaver` (`memoria.db`). Para la API la quité: si cada remitente tuviera su hilo, cualquiera podría hacerse pasar por otro remitente y ver su historial, y además el historial crecería hasta no caber en el contexto. Cada correo empieza de cero. El código del checkpointer sigue comentado en `agente_grafo.py` para reactivarlo si hace falta.
+
+**Clave de API fuera del código.** `/procesar` exige la cabecera `X-API-Key`. La clave se lee del archivo `.env` con `python-dotenv` y nunca se sube al repositorio.
+
+**Errores sin filtrar detalles.** Si algo falla, la API devuelve un `500` con un mensaje genérico y el error completo solo se ve en la terminal del servidor, para no enseñar rutas ni trazas internas a quien llama.
+
+**Límite de pasos (`recursion_limit = 40`).** Una investigación normal (buscar y leer 2-3 páginas) son unos 9 pasos del grafo. El límite deja margen, pero evita que una petición se quede en bucle para siempre.
+
 ## Estructura del proyecto
 
 ```
 Agente_IA/
-├── agente_grafo.py          # Agente actual (LangGraph + memoria persistente)
+├── api.py                   # API FastAPI (POST /procesar) para UiPath
+├── agente_grafo.py          # Agente actual (grafo de LangGraph)
 ├── herramientas.py          # Todas las herramientas del agente
 ├── requirements.txt
+├── .env                     # Clave de la API (no se sube a git)
 ├── documentos/              # Pon aquí los documentos que quieras que lea
 ├── informes/                # Aquí se guardan los informes generados
 └── versiones_anteriores/
@@ -104,6 +162,7 @@ Agente_IA/
 1. **`agente.py`**: primer agente, con la librería `ollama` y el bucle de herramientas escrito a mano.
 2. **`agente1.py`**: el mismo agente con LangChain (`ChatOllama` + `bind_tools`), todavía con el bucle a mano.
 3. **`agente_grafo.py`**: el bucle pasa a ser un grafo de LangGraph, con memoria persistente.
+4. **`api.py`**: el grafo se publica como API para UiPath, sin memoria y protegido con clave.
 
 Las versiones anteriores se pueden ejecutar desde la carpeta raíz con:
 
@@ -114,7 +173,12 @@ python -m versiones_anteriores.agente1
 ## Próximos pasos
 
 - [ ] Herramienta `resumir_documento` para documentos largos (map-reduce: resumir por trozos y luego un resumen final)
-- [ ] Límite de pasos (`recursion_limit`) para que el agente no se quede en bucle
+- [x] Límite de pasos (`recursion_limit`) para que el agente no se quede en bucle
+- [x] API REST con FastAPI y clave de API
+- [ ] Robot de UiPath que lea los correos y llame a la API
+- [ ] Limitar las herramientas del agente de la API (el texto del correo viene de fuera: riesgo de *prompt injection*)
+- [ ] Que la API no arranque si falta `API_KEY` en el `.env`, y añadir un `.env.example`
+- [ ] Usar el asunto del correo en la consulta
 - [ ] Recortar el historial de la memoria cuando crezca mucho
 - [ ] Interfaz web con Streamlit
 - [ ] Tests de las herramientas
