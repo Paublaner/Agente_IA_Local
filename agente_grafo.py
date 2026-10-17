@@ -4,8 +4,8 @@ import locale
 import datetime
 from langchain_ollama import ChatOllama
 from langgraph.graph import MessagesState, StateGraph, END, START
-import sqlite3
-from langgraph.checkpoint.sqlite import SqliteSaver
+#import sqlite3
+#from langgraph.checkpoint.sqlite import SqliteSaver
 #buscar_web Busca en internet como hace google
 
 #leer_texto Sacar el texto de una pagina concreta
@@ -68,10 +68,7 @@ llm = ChatOllama(
 
 funciones ={
      "buscar_web":herramientas.buscar_web,
-     "leer_texto":herramientas.leer_texto,
-     "guardar_informe":herramientas.guardar_informe,
-     "buscar_en_pagina": herramientas.buscar_en_pagina,
-     "leer_documento": herramientas.leer_documento
+     "buscar_en_pagina": herramientas.buscar_en_pagina
 }
 
 llm_with_tools = llm.bind_tools(list(funciones.values()))
@@ -100,33 +97,31 @@ def decidir(state: MessagesState):
         return "herramienta"
     return END
 
-conexion = sqlite3.connect("memoria.db", check_same_thread=False)
+#conexion = sqlite3.connect("memoria.db", check_same_thread=False)
 
-memory = SqliteSaver(conexion)
+#memory = SqliteSaver(conexion)
 
-while True:
 
-    workflow = StateGraph(MessagesState)
+workflow = StateGraph(MessagesState)
 
-    workflow.add_node("node_modelo", node_modelo)
-    workflow.add_node("node_herramientas", node_herramientas)
+workflow.add_node("node_modelo", node_modelo)
+workflow.add_node("node_herramientas", node_herramientas)
 
-    workflow.add_edge(START, "node_modelo")
+workflow.add_edge(START, "node_modelo")
 
-    workflow.add_conditional_edges("node_modelo", 
+workflow.add_conditional_edges("node_modelo", 
                                 decidir,{
         "herramienta": "node_herramientas",
         END: END
     })
 
-    workflow.add_edge("node_herramientas", "node_modelo")
+workflow.add_edge("node_herramientas", "node_modelo")
 
-    app = workflow.compile(checkpointer=memory)
+app = workflow.compile() #Habria que meter el checkpointer la memory si quieres una memoria a largo plazo
 
-    config = {"configurable": {"thread_id": "Pablo"}}
+def ejecutar_grafo (pregunta: str):
+    config = {"recursion_limit": 40}
 
-    usuario = input("Dime que necesitas:  ")
+    respuesta = app.invoke({"messages": [pregunta]}, config)
 
-    respuesta = app.invoke({"messages": [usuario]}, config)
-
-    print(respuesta["messages"][-1].content)
+    return respuesta["messages"][-1].content
