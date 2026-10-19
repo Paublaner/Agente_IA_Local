@@ -120,7 +120,7 @@ workflow.add_edge("node_herramientas", "node_modelo")
 app = workflow.compile() #Habria que meter el checkpointer la memory si quieres una memoria a largo plazo
 
 def ejecutar_grafo (pregunta: str):
-    config = {"recursion_limit": 40}
+    config = {"recursion_limit": 40} #Para evitar que entre en un bucle infinito
 
     respuesta = app.invoke({"messages": [pregunta]}, config)
 
