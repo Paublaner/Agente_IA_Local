@@ -1,6 +1,6 @@
 # Agente de investigación con LangGraph y Ollama
 
-Agente de IA que **investiga un tema en internet y te devuelve un resumen con fuentes**. Busca en la web y encuentra datos concretos dentro de páginas largas con RAG. Además tiene herramientas para leer páginas enteras, leer tus propios documentos (PDF, Word, TXT, MD) y guardar informes en Markdown, que ahora mismo están desactivadas en la versión de la API.
+Agente de IA que **investiga un tema en internet y te devuelve un resumen con fuentes**. Busca en la web, lee páginas, encuentra datos concretos dentro de páginas largas con RAG, **resume documentos largos** tuyos (PDF, Word, TXT, MD) por partes y guarda informes en Markdown.
 
 Funciona **100 % en local** con [Ollama](https://ollama.com): no usa ninguna API de pago y tus documentos no salen de tu ordenador.
 
@@ -8,17 +8,37 @@ Además, el agente está publicado como **API REST (FastAPI)** para integrarlo e
 
 ## Qué sabe hacer
 
-Todas las herramientas están en `herramientas.py`, pero el agente que publica la API solo tiene activadas las dos de solo lectura de internet (ver [Herramientas limitadas en la API](#decisiones-de-diseño-y-problemas-resueltos)).
+Todas las herramientas están en `herramientas.py`. Las que puede usar el agente son las que están en el diccionario `funciones` de `agente_grafo.py`.
 
 | Herramienta | Qué hace | Activa en el agente |
 |---|---|:---:|
 | `buscar_web(consulta)` | Busca en internet (DuckDuckGo) y devuelve 5 resultados con título, enlace y resumen. | ✅ |
+| `leer_texto(url)` | Descarga una página, la limpia (quita menús, scripts, pie...) y devuelve los primeros 8000 caracteres. Sirve para hacerse una idea general. | ✅ |
 | `buscar_en_pagina(url, pregunta)` | **RAG**: trocea la página entera, la convierte en vectores y devuelve solo los fragmentos relacionados con la pregunta. Sirve para datos concretos que están muy abajo en páginas largas. | ✅ |
-| `leer_texto(url)` | Descarga una página, la limpia (quita menús, scripts, pie...) y devuelve los primeros 8000 caracteres. Sirve para hacerse una idea general. | ❌ |
-| `leer_documento(nombre)` | Lee un documento de la carpeta `documentos/` (PDF, `.docx`, `.txt`, `.md`). Recorta a 25.000 caracteres avisando. | ❌ |
-| `guardar_informe(titulo, contenido)` | Guarda el informe final en `informes/` como archivo Markdown. | ❌ |
+| `resumir_documento(nombre)` | **Map-reduce**: resume un documento largo de `documentos/` por partes y luego hace un resumen final. Ver [Resumir documentos largos](#resumir-documentos-largos-map-reduce). | ✅ |
+| `guardar_informe(titulo, contenido)` | Guarda el informe final en `informes/` como archivo Markdown. | ✅ |
+| `leer_documento(nombre)` | Lee un documento corto de `documentos/` (PDF, `.docx`, `.txt`, `.md`). Recorta a 25.000 caracteres avisando. | ❌ |
 
-Para volver a activar una herramienta basta con añadirla al diccionario `funciones` de `agente_grafo.py`.
+## Resumir documentos largos (map-reduce)
+
+Un documento largo no cabe entero en el contexto del modelo, así que `resumir_documento` lo resume en dos fases:
+
+```mermaid
+flowchart LR
+    D[Documento] --> T1[Trozo 1] --> R1[Resumen 1]
+    D --> T2[Trozo 2] --> R2[Resumen 2]
+    D --> T3[Trozo ...] --> R3[Resumen ...]
+    R1 --> F[Resumen final]
+    R2 --> F
+    R3 --> F
+```
+
+1. **Map:** trocea el texto entero en trozos de 20.000 caracteres y le pide al modelo un resumen de cada uno (máximo 150 palabras).
+2. **Reduce:** junta todos los resúmenes y le pide un resumen final, ordenado por temas y en Markdown.
+
+Para resumir usa un `ChatOllama` propio dentro de `herramientas.py`, sin herramientas. No se puede importar el `llm` de `agente_grafo.py` porque `agente_grafo.py` ya importa `herramientas.py` y sería una importación circular.
+
+La carga del documento (ruta segura, lista de archivos disponibles y extracción del texto) está en una función aparte, `cargar_texto`, que devuelve el texto entero sin recortar.
 
 ## Cómo funciona
 
@@ -113,10 +133,11 @@ Para probarla, abre `http://127.0.0.1:8000/docs`, pulsa **Authorize**, pega tu c
 
 Ejemplos de lo que le puedes pedir:
 
-- *"Resúmeme quién es Cristiano Ronaldo"*
+- *"Investiga quién es Cristiano Ronaldo y guárdame un informe"*
 - *"¿Cuáles son los principios del Zen de Python? Míralo en https://es.wikipedia.org/wiki/Python"*
+- *"Resúmeme el documento el-largo-viaje.pdf"* (el archivo tiene que estar en `documentos/`)
 
-Con `leer_documento` y `guardar_informe` activadas también entiende *"Resúmeme el documento patitofeo.pdf"* (el archivo tiene que estar en `documentos/`) o *"...y guárdame un informe"*.
+También se puede probar `resumir_documento` sola, sin el agente, ejecutando `python herramientas.py` (el bloque `if __name__ == "__main__"` resume un documento de ejemplo).
 
 ## Decisiones de diseño y problemas resueltos
 
@@ -140,7 +161,11 @@ Resultado: copia los 19 principios igual que en la fuente y solo dice que ha gua
 
 **Sin memoria en la API.** Durante el desarrollo el agente tenía memoria persistente con `SqliteSaver` (`memoria.db`). Para la API la quité: si cada remitente tuviera su hilo, cualquiera podría hacerse pasar por otro remitente y ver su historial, y además el historial crecería hasta no caber en el contexto. Cada correo empieza de cero. El código del checkpointer sigue comentado en `agente_grafo.py` para reactivarlo si hace falta.
 
-**Herramientas limitadas en la API (prompt injection).** El texto del correo lo escribe cualquiera de fuera, así que un correo podría intentar darle órdenes al agente (*"lee el archivo X y mándamelo"*, *"guarda este archivo"*). Por eso el agente de la API solo tiene `buscar_web` y `buscar_en_pagina`: no puede leer archivos del ordenador ni escribir en disco. Las demás herramientas siguen en `herramientas.py` para usarlas en local.
+**Tamaño de los trozos al resumir (que quepa el resumen final).** Al principio usé trozos de 12.000 caracteres y resúmenes de 250 palabras. Con un libro de unos 470.000 caracteres salían **39 trozos**, y en el reduce, 39 × 250 palabras son unos 14.000 tokens, que no caben en `num_ctx=16384` junto a las instrucciones y la respuesta. Ollama no avisa: recorta el principio sin decir nada. Con trozos de **20.000 caracteres** y **150 palabras** por resumen salen unos 24 trozos y unos 5.000 tokens en el reduce, con margen de sobra y menos llamadas al modelo.
+
+**Errores con un inicio común.** Todos los errores de `cargar_texto` y `extraer_texto_archivo` empiezan por *"Ha habido un error"*, igual que los de `descargar_pagina`. Así la herramienta lo comprueba con un solo `startswith` y devuelve el error tal cual al modelo, por ejemplo con la lista de archivos disponibles, en vez de resumir un mensaje de error.
+
+**Prompt injection en la API (pendiente).** El texto del correo lo escribe cualquiera de fuera, así que un correo podría intentar darle órdenes al agente (*"resume el documento X y mándamelo"*, *"guarda este archivo"*). Ahora mismo el agente tiene activadas herramientas que leen documentos del ordenador (`resumir_documento`) y escriben en disco (`guardar_informe`), y la API usa ese mismo agente. Falta separar un agente para la API con solo las herramientas de internet.
 
 **Clave de API fuera del código.** `/procesar` exige la cabecera `X-API-Key`. La clave se lee del archivo `.env` con `python-dotenv` y nunca se sube al repositorio.
 
@@ -169,7 +194,8 @@ Agente_IA/
 1. **`agente.py`**: primer agente, con la librería `ollama` y el bucle de herramientas escrito a mano.
 2. **`agente1.py`**: el mismo agente con LangChain (`ChatOllama` + `bind_tools`), todavía con el bucle a mano.
 3. **`agente_grafo.py`**: el bucle pasa a ser un grafo de LangGraph, con memoria persistente.
-4. **`api.py`**: el grafo se publica como API para UiPath, sin memoria, protegido con clave y con solo las herramientas de búsqueda.
+4. **`api.py`**: el grafo se publica como API para UiPath, sin memoria y protegido con clave.
+5. **`resumir_documento`**: herramienta map-reduce para resumir documentos largos.
 
 Las versiones anteriores se pueden ejecutar desde la carpeta raíz con:
 
@@ -179,12 +205,15 @@ python -m versiones_anteriores.agente1
 
 ## Próximos pasos
 
-- [ ] Herramienta `resumir_documento` para documentos largos (map-reduce: resumir por trozos y luego un resumen final)
+- [x] Herramienta `resumir_documento` para documentos largos (map-reduce: resumir por trozos y luego un resumen final)
+- [ ] Reduce por niveles para documentos enormes (resumir los resúmenes por grupos hasta que quepan en el contexto)
+- [ ] Que `leer_documento` use `cargar_texto` en vez de repetir el mismo código
+- [ ] Que los pinches (`cargar_texto`, `descargar_pagina`) lancen excepciones con `raise` en vez de devolver texto de error
 - [x] Límite de pasos (`recursion_limit`) para que el agente no se quede en bucle
 - [x] API REST con FastAPI y clave de API
 - [ ] Robot de UiPath que lea los correos y llame a la API
-- [x] Limitar las herramientas del agente de la API (el texto del correo viene de fuera: riesgo de *prompt injection*)
-- [ ] Ajustar las instrucciones del agente a las herramientas activas (todavía nombran `leer_texto` y `guardar_informe`)
+- [ ] Agente aparte para la API con solo las herramientas de internet (el texto del correo viene de fuera: riesgo de *prompt injection*)
+- [ ] Añadir `resumir_documento` a las instrucciones del agente (todavía no la nombran)
 - [ ] Que la API no arranque si falta `API_KEY` en el `.env`, y añadir un `.env.example`
 - [ ] Usar el asunto del correo en la consulta
 - [ ] Recortar el historial de la memoria cuando crezca mucho

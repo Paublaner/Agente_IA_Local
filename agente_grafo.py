@@ -70,7 +70,8 @@ funciones ={
      "buscar_web":herramientas.buscar_web,
      "buscar_en_pagina": herramientas.buscar_en_pagina,
      "leer_texto": herramientas.leer_texto,
-     "guardar_informe": herramientas.guardar_informe
+     "guardar_informe": herramientas.guardar_informe,
+     "resumir_documento": herramientas.resumir_documento
 }
 
 llm_with_tools = llm.bind_tools(list(funciones.values()))
@@ -99,9 +100,9 @@ def decidir(state: MessagesState):
         return "herramienta"
     return END
 
-#conexion = sqlite3.connect("memoria.db", check_same_thread=False)
+conexion = sqlite3.connect("memoria.db", check_same_thread=False)
 
-#memory = SqliteSaver(conexion)
+memory = SqliteSaver(conexion)
 
 
 workflow = StateGraph(MessagesState)
@@ -119,7 +120,7 @@ workflow.add_conditional_edges("node_modelo",
 
 workflow.add_edge("node_herramientas", "node_modelo")
 
-app = workflow.compile() #Habria que meter el checkpointer la memory si quieres una memoria a largo plazo
+app = workflow.compile(checkpointer=memory) #Habria que meter el checkpointer la memory si quieres una memoria a largo plazo
 
 def ejecutar_grafo (pregunta: str):
     config = {"recursion_limit": 40} #Para evitar que entre en un bucle infinito
