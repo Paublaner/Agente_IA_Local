@@ -1,6 +1,6 @@
 # Agente de investigación con LangGraph y Ollama
 
-Agente de IA que **investiga un tema en internet y te devuelve un resumen con fuentes**. Busca en la web, lee páginas, encuentra datos concretos dentro de páginas largas con RAG, lee tus propios documentos (PDF, Word, TXT, MD) y guarda informes en Markdown.
+Agente de IA que **investiga un tema en internet y te devuelve un resumen con fuentes**. Busca en la web y encuentra datos concretos dentro de páginas largas con RAG. Además tiene herramientas para leer páginas enteras, leer tus propios documentos (PDF, Word, TXT, MD) y guardar informes en Markdown, que ahora mismo están desactivadas en la versión de la API.
 
 Funciona **100 % en local** con [Ollama](https://ollama.com): no usa ninguna API de pago y tus documentos no salen de tu ordenador.
 
@@ -8,13 +8,17 @@ Además, el agente está publicado como **API REST (FastAPI)** para integrarlo e
 
 ## Qué sabe hacer
 
-| Herramienta | Qué hace |
-|---|---|
-| `buscar_web(consulta)` | Busca en internet (DuckDuckGo) y devuelve 5 resultados con título, enlace y resumen. |
-| `leer_texto(url)` | Descarga una página, la limpia (quita menús, scripts, pie...) y devuelve los primeros 8000 caracteres. Sirve para hacerse una idea general. |
-| `buscar_en_pagina(url, pregunta)` | **RAG**: trocea la página entera, la convierte en vectores y devuelve solo los fragmentos relacionados con la pregunta. Sirve para datos concretos que están muy abajo en páginas largas. |
-| `leer_documento(nombre)` | Lee un documento de la carpeta `documentos/` (PDF, `.docx`, `.txt`, `.md`). |
-| `guardar_informe(titulo, contenido)` | Guarda el informe final en `informes/` como archivo Markdown. |
+Todas las herramientas están en `herramientas.py`, pero el agente que publica la API solo tiene activadas las dos de solo lectura de internet (ver [Herramientas limitadas en la API](#decisiones-de-diseño-y-problemas-resueltos)).
+
+| Herramienta | Qué hace | Activa en el agente |
+|---|---|:---:|
+| `buscar_web(consulta)` | Busca en internet (DuckDuckGo) y devuelve 5 resultados con título, enlace y resumen. | ✅ |
+| `buscar_en_pagina(url, pregunta)` | **RAG**: trocea la página entera, la convierte en vectores y devuelve solo los fragmentos relacionados con la pregunta. Sirve para datos concretos que están muy abajo en páginas largas. | ✅ |
+| `leer_texto(url)` | Descarga una página, la limpia (quita menús, scripts, pie...) y devuelve los primeros 8000 caracteres. Sirve para hacerse una idea general. | ❌ |
+| `leer_documento(nombre)` | Lee un documento de la carpeta `documentos/` (PDF, `.docx`, `.txt`, `.md`). Recorta a 25.000 caracteres avisando. | ❌ |
+| `guardar_informe(titulo, contenido)` | Guarda el informe final en `informes/` como archivo Markdown. | ❌ |
+
+Para volver a activar una herramienta basta con añadirla al diccionario `funciones` de `agente_grafo.py`.
 
 ## Cómo funciona
 
@@ -109,9 +113,10 @@ Para probarla, abre `http://127.0.0.1:8000/docs`, pulsa **Authorize**, pega tu c
 
 Ejemplos de lo que le puedes pedir:
 
-- *"Investiga quién es Cristiano Ronaldo y guárdame un informe"*
+- *"Resúmeme quién es Cristiano Ronaldo"*
 - *"¿Cuáles son los principios del Zen de Python? Míralo en https://es.wikipedia.org/wiki/Python"*
-- *"Resúmeme el documento patitofeo.pdf"* (el archivo tiene que estar en `documentos/`)
+
+Con `leer_documento` y `guardar_informe` activadas también entiende *"Resúmeme el documento patitofeo.pdf"* (el archivo tiene que estar en `documentos/`) o *"...y guárdame un informe"*.
 
 ## Decisiones de diseño y problemas resueltos
 
@@ -135,6 +140,8 @@ Resultado: copia los 19 principios igual que en la fuente y solo dice que ha gua
 
 **Sin memoria en la API.** Durante el desarrollo el agente tenía memoria persistente con `SqliteSaver` (`memoria.db`). Para la API la quité: si cada remitente tuviera su hilo, cualquiera podría hacerse pasar por otro remitente y ver su historial, y además el historial crecería hasta no caber en el contexto. Cada correo empieza de cero. El código del checkpointer sigue comentado en `agente_grafo.py` para reactivarlo si hace falta.
 
+**Herramientas limitadas en la API (prompt injection).** El texto del correo lo escribe cualquiera de fuera, así que un correo podría intentar darle órdenes al agente (*"lee el archivo X y mándamelo"*, *"guarda este archivo"*). Por eso el agente de la API solo tiene `buscar_web` y `buscar_en_pagina`: no puede leer archivos del ordenador ni escribir en disco. Las demás herramientas siguen en `herramientas.py` para usarlas en local.
+
 **Clave de API fuera del código.** `/procesar` exige la cabecera `X-API-Key`. La clave se lee del archivo `.env` con `python-dotenv` y nunca se sube al repositorio.
 
 **Errores sin filtrar detalles.** Si algo falla, la API devuelve un `500` con un mensaje genérico y el error completo solo se ve en la terminal del servidor, para no enseñar rutas ni trazas internas a quien llama.
@@ -147,7 +154,7 @@ Resultado: copia los 19 principios igual que en la fuente y solo dice que ha gua
 Agente_IA/
 ├── api.py                   # API FastAPI (POST /procesar) para UiPath
 ├── agente_grafo.py          # Agente actual (grafo de LangGraph)
-├── herramientas.py          # Todas las herramientas del agente
+├── herramientas.py          # Todas las herramientas (activas o no en el agente)
 ├── requirements.txt
 ├── .env                     # Clave de la API (no se sube a git)
 ├── documentos/              # Pon aquí los documentos que quieras que lea
@@ -162,7 +169,7 @@ Agente_IA/
 1. **`agente.py`**: primer agente, con la librería `ollama` y el bucle de herramientas escrito a mano.
 2. **`agente1.py`**: el mismo agente con LangChain (`ChatOllama` + `bind_tools`), todavía con el bucle a mano.
 3. **`agente_grafo.py`**: el bucle pasa a ser un grafo de LangGraph, con memoria persistente.
-4. **`api.py`**: el grafo se publica como API para UiPath, sin memoria y protegido con clave.
+4. **`api.py`**: el grafo se publica como API para UiPath, sin memoria, protegido con clave y con solo las herramientas de búsqueda.
 
 Las versiones anteriores se pueden ejecutar desde la carpeta raíz con:
 
@@ -176,7 +183,8 @@ python -m versiones_anteriores.agente1
 - [x] Límite de pasos (`recursion_limit`) para que el agente no se quede en bucle
 - [x] API REST con FastAPI y clave de API
 - [ ] Robot de UiPath que lea los correos y llame a la API
-- [ ] Limitar las herramientas del agente de la API (el texto del correo viene de fuera: riesgo de *prompt injection*)
+- [x] Limitar las herramientas del agente de la API (el texto del correo viene de fuera: riesgo de *prompt injection*)
+- [ ] Ajustar las instrucciones del agente a las herramientas activas (todavía nombran `leer_texto` y `guardar_informe`)
 - [ ] Que la API no arranque si falta `API_KEY` en el `.env`, y añadir un `.env.example`
 - [ ] Usar el asunto del correo en la consulta
 - [ ] Recortar el historial de la memoria cuando crezca mucho

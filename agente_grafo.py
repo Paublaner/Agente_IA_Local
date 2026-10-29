@@ -68,7 +68,9 @@ llm = ChatOllama(
 
 funciones ={
      "buscar_web":herramientas.buscar_web,
-     "buscar_en_pagina": herramientas.buscar_en_pagina
+     "buscar_en_pagina": herramientas.buscar_en_pagina,
+     "leer_texto": herramientas.leer_texto,
+     "guardar_informe": herramientas.guardar_informe
 }
 
 llm_with_tools = llm.bind_tools(list(funciones.values()))
