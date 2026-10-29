@@ -2,9 +2,7 @@
 
 Agente de IA que **investiga un tema en internet y te devuelve un resumen con fuentes**. Busca en la web, lee páginas, encuentra datos concretos dentro de páginas largas con RAG, **resume documentos largos** tuyos (PDF, Word, TXT, MD) por partes y guarda informes en Markdown.
 
-Funciona **100 % en local** con [Ollama](https://ollama.com): no usa ninguna API de pago y tus documentos no salen de tu ordenador.
-
-Además, el agente está publicado como **API REST (FastAPI)** para integrarlo en automatizaciones. La idea es que un robot de **UiPath** le reenvíe correos que piden un resumen y devuelva la respuesta al remitente.
+Funciona **100 % en local** con [Ollama](https://ollama.com): no usa ninguna API de pago y tus documentos no salen de tu ordenador. Se usa desde una **interfaz de chat con Streamlit** que recuerda la conversación y enseña qué herramientas va usando.
 
 ## Qué sabe hacer
 
@@ -16,8 +14,8 @@ Todas las herramientas están en `herramientas.py`. Las que puede usar el agente
 | `leer_texto(url)` | Descarga una página, la limpia (quita menús, scripts, pie...) y devuelve los primeros 8000 caracteres. Sirve para hacerse una idea general. | ✅ |
 | `buscar_en_pagina(url, pregunta)` | **RAG**: trocea la página entera, la convierte en vectores y devuelve solo los fragmentos relacionados con la pregunta. Sirve para datos concretos que están muy abajo en páginas largas. | ✅ |
 | `resumir_documento(nombre)` | **Map-reduce**: resume un documento largo de `documentos/` por partes y luego hace un resumen final. Ver [Resumir documentos largos](#resumir-documentos-largos-map-reduce). | ✅ |
+| `leer_documento(nombre)` | Lee un documento corto de `documentos/` (PDF, `.docx`, `.txt`, `.md`). Recorta a 25.000 caracteres avisando. | ✅ |
 | `guardar_informe(titulo, contenido)` | Guarda el informe final en `informes/` como archivo Markdown. | ✅ |
-| `leer_documento(nombre)` | Lee un documento corto de `documentos/` (PDF, `.docx`, `.txt`, `.md`). Recorta a 25.000 caracteres avisando. | ❌ |
 
 ## Resumir documentos largos (map-reduce)
 
@@ -55,53 +53,13 @@ flowchart LR
 - **`node_modelo`**: añade las instrucciones de sistema delante del historial y llama al modelo con las herramientas enlazadas (`bind_tools`).
 - **`node_herramientas`**: coge el último mensaje, ejecuta cada `tool_call` y devuelve los resultados como mensajes.
 - **`decidir`**: si el último mensaje tiene `tool_calls`, va a herramientas; si no, termina.
-
-## API para UiPath
-
-`api.py` publica el agente con FastAPI. El robot de UiPath lee el correo, llama a la API y es él quien envía la respuesta: la API no manda correos.
-
-```mermaid
-flowchart LR
-    C1[Correo entrante] --> U1[UiPath]
-    U1 -->|POST /procesar<br/>+ X-API-Key| API[FastAPI]
-    API --> G[Agente LangGraph]
-    G --> API
-    API -->|JSON| U2[UiPath]
-    U2 --> C2[Correo de respuesta]
-```
-
-**Petición** `POST /procesar` con la cabecera `X-API-Key`:
-
-```json
-{
-  "remitente": "persona@ejemplo.com",
-  "asunto": "Resumen",
-  "cuerpo_correo": "Resúmeme qué es LangGraph"
-}
-```
-
-**Respuesta:**
-
-```json
-{
-  "status": "completado",
-  "enviar_a": "persona@ejemplo.com",
-  "texto_resumido": "LangGraph es..."
-}
-```
-
-| Código | Cuándo |
-|---|---|
-| `200` | Resumen generado |
-| `401` / `403` | Clave de API incorrecta o ausente |
-| `500` | Fallo interno (Ollama apagado, límite de pasos...). El detalle se escribe en la terminal del servidor, no se envía al cliente. |
-
-Los saltos de línea del resumen llegan como `\n` dentro del JSON; UiPath los convierte en saltos reales al deserializarlo. El modelo local puede tardar varios minutos, así que hay que subir el timeout de la actividad HTTP Request.
+- **Memoria**: el grafo se compila con un checkpointer `SqliteSaver` (`memoria.db`). Cada conversación del chat tiene su `thread_id`, así que el agente recuerda lo hablado en esa conversación.
+- **`ejecutar_grafo(pregunta, hilo)`**: usa `stream` en vez de `invoke` y va devolviendo (`yield`) cada paso según ocurre: las herramientas que pide el modelo y, al final, la respuesta. Así la interfaz puede enseñarlos mientras el agente trabaja.
 
 ## Tecnologías
 
-- **Python** + **LangGraph** (`StateGraph`, `MessagesState`)
-- **FastAPI** + **uvicorn** para la API, **python-dotenv** para la clave
+- **Python** + **LangGraph** (`StateGraph`, `MessagesState`, `SqliteSaver` para la memoria)
+- **Streamlit** para la interfaz de chat
 - **LangChain**: `ChatOllama`, `@tool`, `RecursiveCharacterTextSplitter`
 - **Ollama** en local: `qwen3` (modelo con herramientas) y `bge-m3` (embeddings)
 - **ChromaDB** como base de datos vectorial para el RAG
@@ -121,15 +79,11 @@ python -m venv .venv
 .venv\Scripts\activate        # en Windows
 pip install -r requirements.txt
 
-# 3. Crear un archivo .env con la clave de la API (git lo ignora)
-#    API_KEY=una_clave_larga_y_aleatoria
-python -c "import secrets; print(secrets.token_urlsafe(32))"
-
-# 4. Arrancar la API
-uvicorn api:app --reload
+# 3. Arrancar la interfaz
+streamlit run app.py
 ```
 
-Para probarla, abre `http://127.0.0.1:8000/docs`, pulsa **Authorize**, pega tu clave y usa **Try it out** en `/procesar`.
+Se abre en `http://localhost:8501`. Es un chat **con memoria**: el agente recuerda lo hablado en la conversación. Mientras trabaja se ve qué herramientas va usando, y cada respuesta guarda en un desplegable las herramientas que usó. En la barra lateral puedes empezar una conversación nueva y subir documentos a `documentos/` para que los lea o los resuma.
 
 Ejemplos de lo que le puedes pedir:
 
@@ -159,29 +113,24 @@ Resultado: copia los 19 principios igual que en la fuente y solo dice que ha gua
 
 **Informe solo si se pide.** El agente guarda informes únicamente cuando el usuario lo pide, para no llenar la carpeta con archivos que nadie quería.
 
-**Sin memoria en la API.** Durante el desarrollo el agente tenía memoria persistente con `SqliteSaver` (`memoria.db`). Para la API la quité: si cada remitente tuviera su hilo, cualquiera podría hacerse pasar por otro remitente y ver su historial, y además el historial crecería hasta no caber en el contexto. Cada correo empieza de cero. El código del checkpointer sigue comentado en `agente_grafo.py` para reactivarlo si hace falta.
-
 **Tamaño de los trozos al resumir (que quepa el resumen final).** Al principio usé trozos de 12.000 caracteres y resúmenes de 250 palabras. Con un libro de unos 470.000 caracteres salían **39 trozos**, y en el reduce, 39 × 250 palabras son unos 14.000 tokens, que no caben en `num_ctx=16384` junto a las instrucciones y la respuesta. Ollama no avisa: recorta el principio sin decir nada. Con trozos de **20.000 caracteres** y **150 palabras** por resumen salen unos 24 trozos y unos 5.000 tokens en el reduce, con margen de sobra y menos llamadas al modelo.
 
 **Errores con un inicio común.** Todos los errores de `cargar_texto` y `extraer_texto_archivo` empiezan por *"Ha habido un error"*, igual que los de `descargar_pagina`. Así la herramienta lo comprueba con un solo `startswith` y devuelve el error tal cual al modelo, por ejemplo con la lista de archivos disponibles, en vez de resumir un mensaje de error.
 
-**Prompt injection en la API (pendiente).** El texto del correo lo escribe cualquiera de fuera, así que un correo podría intentar darle órdenes al agente (*"resume el documento X y mándamelo"*, *"guarda este archivo"*). Ahora mismo el agente tiene activadas herramientas que leen documentos del ordenador (`resumir_documento`) y escriben en disco (`guardar_informe`), y la API usa ese mismo agente. Falta separar un agente para la API con solo las herramientas de internet.
-
-**Clave de API fuera del código.** `/procesar` exige la cabecera `X-API-Key`. La clave se lee del archivo `.env` con `python-dotenv` y nunca se sube al repositorio.
-
-**Errores sin filtrar detalles.** Si algo falla, la API devuelve un `500` con un mensaje genérico y el error completo solo se ve en la terminal del servidor, para no enseñar rutas ni trazas internas a quien llama.
-
 **Límite de pasos (`recursion_limit = 40`).** Una investigación normal (buscar y leer 2-3 páginas) son unos 9 pasos del grafo. El límite deja margen, pero evita que una petición se quede en bucle para siempre.
+
+**Sin API, solo en local.** El agente estuvo publicado como API REST (FastAPI) para que un robot de UiPath le reenviara correos. Lo quité porque el texto de un correo lo escribe cualquiera de fuera y podría darle órdenes al agente (*prompt injection*: *"resume el documento X y mándamelo"*), y el agente tiene herramientas que leen documentos del ordenador y escriben en disco. Ahora solo lo usa quien tiene acceso al ordenador, desde el chat. El código de la API está en el historial de git.
 
 ## Estructura del proyecto
 
 ```
 Agente_IA/
-├── api.py                   # API FastAPI (POST /procesar) para UiPath
-├── agente_grafo.py          # Agente actual (grafo de LangGraph)
-├── herramientas.py          # Todas las herramientas (activas o no en el agente)
+├── app.py                   # Interfaz de chat con Streamlit (con memoria)
+├── .streamlit/config.toml   # Tema de la interfaz (color, bordes, menú)
+├── agente_grafo.py          # Agente actual (grafo de LangGraph con memoria)
+├── herramientas.py          # Todas las herramientas del agente
 ├── requirements.txt
-├── .env                     # Clave de la API (no se sube a git)
+├── memoria.db               # Memoria de las conversaciones (no se sube a git)
 ├── documentos/              # Pon aquí los documentos que quieras que lea
 ├── informes/                # Aquí se guardan los informes generados
 └── versiones_anteriores/
@@ -194,8 +143,9 @@ Agente_IA/
 1. **`agente.py`**: primer agente, con la librería `ollama` y el bucle de herramientas escrito a mano.
 2. **`agente1.py`**: el mismo agente con LangChain (`ChatOllama` + `bind_tools`), todavía con el bucle a mano.
 3. **`agente_grafo.py`**: el bucle pasa a ser un grafo de LangGraph, con memoria persistente.
-4. **`api.py`**: el grafo se publica como API para UiPath, sin memoria y protegido con clave.
+4. **`api.py`**: el grafo se publicó como API para UiPath, sin memoria y protegido con clave. Después se quitó (ver *Sin API, solo en local*).
 5. **`resumir_documento`**: herramienta map-reduce para resumir documentos largos.
+6. **`app.py`**: interfaz de chat con Streamlit, con memoria y viendo las herramientas en directo.
 
 Las versiones anteriores se pueden ejecutar desde la carpeta raíz con:
 
@@ -210,13 +160,8 @@ python -m versiones_anteriores.agente1
 - [ ] Que `leer_documento` use `cargar_texto` en vez de repetir el mismo código
 - [ ] Que los pinches (`cargar_texto`, `descargar_pagina`) lancen excepciones con `raise` en vez de devolver texto de error
 - [x] Límite de pasos (`recursion_limit`) para que el agente no se quede en bucle
-- [x] API REST con FastAPI y clave de API
-- [ ] Robot de UiPath que lea los correos y llame a la API
-- [ ] Agente aparte para la API con solo las herramientas de internet (el texto del correo viene de fuera: riesgo de *prompt injection*)
-- [ ] Añadir `resumir_documento` a las instrucciones del agente (todavía no la nombran)
-- [ ] Que la API no arranque si falta `API_KEY` en el `.env`, y añadir un `.env.example`
-- [ ] Usar el asunto del correo en la consulta
+- [ ] Añadir `resumir_documento` y `leer_documento` a las instrucciones del agente (todavía no las nombran)
 - [ ] Recortar el historial de la memoria cuando crezca mucho
-- [ ] Interfaz web con Streamlit
+- [x] Interfaz web con Streamlit
 - [ ] Tests de las herramientas
 - [ ] GIF de demostración

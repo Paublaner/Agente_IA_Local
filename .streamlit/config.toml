@@ -1,0 +1,7 @@
+[theme]
+primaryColor = "#6C5CE7"
+baseRadius = "large"
+font = "sans serif"
+
+[client]
+toolbarMode = "minimal"

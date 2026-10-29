@@ -4,8 +4,9 @@ import locale
 import datetime
 from langchain_ollama import ChatOllama
 from langgraph.graph import MessagesState, StateGraph, END, START
-#import sqlite3
-#from langgraph.checkpoint.sqlite import SqliteSaver
+import sqlite3
+from langgraph.checkpoint.sqlite import SqliteSaver
+
 #buscar_web Busca en internet como hace google
 
 #leer_texto Sacar el texto de una pagina concreta
@@ -71,7 +72,8 @@ funciones ={
      "buscar_en_pagina": herramientas.buscar_en_pagina,
      "leer_texto": herramientas.leer_texto,
      "guardar_informe": herramientas.guardar_informe,
-     "resumir_documento": herramientas.resumir_documento
+     "resumir_documento": herramientas.resumir_documento,
+     "leer_documento": herramientas.leer_documento
 }
 
 llm_with_tools = llm.bind_tools(list(funciones.values()))
@@ -120,12 +122,26 @@ workflow.add_conditional_edges("node_modelo",
 
 workflow.add_edge("node_herramientas", "node_modelo")
 
-app = workflow.compile(checkpointer=memory) #Habria que meter el checkpointer la memory si quieres una memoria a largo plazo
+app = workflow.compile() #Para la API: sin memoria, cada correo empieza de cero
 
-def ejecutar_grafo (pregunta: str):
-    config = {"recursion_limit": 40} #Para evitar que entre en un bucle infinito
+app_memoria = workflow.compile(checkpointer=memory) #Para el chat de Streamlit: recuerda la conversacion (cada chat tiene su thread_id)
 
-    respuesta = app.invoke({"messages": [pregunta]}, config)
+def ejecutar_grafo (pregunta: str, hilo: str):
+    """
+    Con memoria (para el chat de Streamlit).
+    En vez de devolver solo el final, va devolviendo (yield) cada paso según ocurre:
+    ("herramienta", llamada) cuando el modelo pide una herramienta y ("respuesta", texto) al
+ terminar.
+    """
+    config = {"configurable": {"thread_id": hilo}, "recursion_limit": 40}
 
-    return respuesta["messages"][-1].content
+    for paso in app_memoria.stream({"messages": [pregunta]}, config, stream_mode="updates"):
+        for nodo, cambios in paso.items():
+            if nodo != "node_modelo":
+                continue
+            for mensaje in cambios["messages"]:
+                for llamada in mensaje.tool_calls:
+                    yield ("herramienta", llamada)
+                if not mensaje.tool_calls:
+                    yield ("respuesta", mensaje.content)
 
