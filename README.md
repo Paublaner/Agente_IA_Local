@@ -157,10 +157,10 @@ python -m versiones_anteriores.agente1
 
 - [x] Herramienta `resumir_documento` para documentos largos (map-reduce: resumir por trozos y luego un resumen final)
 - [ ] Reduce por niveles para documentos enormes (resumir los resúmenes por grupos hasta que quepan en el contexto)
-- [ ] Que `leer_documento` use `cargar_texto` en vez de repetir el mismo código
-- [ ] Que los pinches (`cargar_texto`, `descargar_pagina`) lancen excepciones con `raise` en vez de devolver texto de error
+- [x] Que `leer_documento` use `cargar_texto` en vez de repetir el mismo código
+- [x] Que los pinches (`cargar_texto`, `descargar_pagina`) lancen excepciones con `raise` en vez de devolver texto de error
 - [x] Límite de pasos (`recursion_limit`) para que el agente no se quede en bucle
-- [ ] Añadir `resumir_documento` y `leer_documento` a las instrucciones del agente (todavía no las nombran)
+- [x] Añadir `resumir_documento` y `leer_documento` a las instrucciones del agente (todavía no las nombran)
 - [ ] Recortar el historial de la memoria cuando crezca mucho
 - [x] Interfaz web con Streamlit
 - [ ] Tests de las herramientas

@@ -33,6 +33,8 @@ HERRAMIENTAS:
 - leer_texto(url): descarga una página y devuelve solo su PRINCIPIO (8000 caracteres). Sirve para hacerse una idea general.
 - buscar_en_pagina(url, pregunta): busca dentro de la página ENTERA y devuelve solo los fragmentos relacionados con la pregunta. Si responde "no aparece en la pagina", esa página no tiene el dato.
 - guardar_informe(titulo, contenido): guarda un informe en Markdown en la carpeta "informes".
+- resumir_documento(nombre): resume documentos largos de la carpeta de documentos.
+- leer_documento: lee el documento y devuelve el texto dentro de el.
 
 CÓMO TRABAJAR:
 1. Usa buscar_web con una consulta clara para encontrar fuentes sobre la pregunta del usuario.

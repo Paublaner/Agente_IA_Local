@@ -107,13 +107,13 @@ def extraer_texto_archivo(ruta: Path)-> str:
             for parrafo in doc.paragraphs:
                 paginas.append(parrafo.text)
         else:
-            return "Ha habido un error los formatos que se aceptan son PDF, WORD, TXT y MD o MarkDown"
+            raise RuntimeError("Ha habido un error los formatos que se aceptan son PDF, WORD, TXT y MD o MarkDown")
 
         salto_entre_resultados = "\n\n"
         return salto_entre_resultados.join(paginas)
         
     except Exception as e:
-        return f"Ha habido un error al intentar leer el archivo. Error {e}"
+        raise RuntimeError(f"Ha habido un error al intentar leer el archivo. Error {e}")
 
 
 def cargar_texto(nombre: str) -> str:
@@ -133,14 +133,14 @@ def cargar_texto(nombre: str) -> str:
 
     # Seguridad: si la ruta se sale de "documentos" (por ejemplo "../../secreto.txt"), no se lee
     if not ruta.is_relative_to(carpeta):
-        return "Ha habido un error no está permitido leer archivos fuera de la carpeta documentos"
+        raise RuntimeError("Ha habido un error no está permitido leer archivos fuera de la carpeta documentos")
 
     # Si no existe o es una carpeta, decimos qué archivos sí hay para que el modelo pueda corregirse
     if not ruta.is_file():
         disponibles = [archivo.name for archivo in carpeta.iterdir() if archivo.is_file()]
         if disponibles == []:
-            return "Ha habido un error no existe ese archivo y la carpeta documentos está vacía"
-        return f"Ha habido un error no existe el archivo '{nombre}'. Archivos disponibles: {', '.join(disponibles)}"
+            raise RuntimeError("Ha habido un error no existe ese archivo y la carpeta documentos está vacía")
+        raise RuntimeError(f"Ha habido un error no existe el archivo '{nombre}'. Archivos disponibles: {', '.join(disponibles)}")
 
     texto = extraer_texto_archivo(ruta)
 
@@ -232,24 +232,7 @@ def leer_documento(nombre: str) -> str:
     Args:
         nombre: Nombre del archivo dentro de la carpeta "documentos", por ejemplo "informe.pdf"
     """
-    proyecto = Path(__file__).resolve().parent
-    carpeta = (proyecto / "documentos").resolve()
-
-    # resolve() calcula a dónde apunta de verdad la ruta (quita los "..")
-    ruta = (carpeta / nombre).resolve()
-
-    # Seguridad: si la ruta se sale de "documentos" (por ejemplo "../../secreto.txt"), no se lee
-    if not ruta.is_relative_to(carpeta):
-        return "No está permitido leer archivos fuera de la carpeta documentos"
-
-    # Si no existe o es una carpeta, decimos qué archivos sí hay para que el modelo pueda corregirse
-    if not ruta.is_file():
-        disponibles = [archivo.name for archivo in carpeta.iterdir() if archivo.is_file()]
-        if disponibles == []:
-            return "No existe ese archivo y la carpeta documentos está vacía"
-        return f"No existe el archivo '{nombre}'. Archivos disponibles: {', '.join(disponibles)}"
-
-    texto = extraer_texto_archivo(ruta)
+    texto = cargar_texto(nombre)
     limite = 25000
     if len(texto) >= limite:
         aviso = f"El texto ha sido recortado a {limite} caracteres ya que ah excedido el limite de {limite} el documento tenia {len(texto)}"
