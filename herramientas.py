@@ -354,6 +354,3 @@ def buscar_en_pagina(url:str, pregunta:str) -> str:
 
     return salto_entre_resultados.join(resume)
 
-if __name__ == "__main__":
-    resumido = resumir_documento.invoke({"nombre": "el-largo-viaje.pdf"})
-    print(resumido)
