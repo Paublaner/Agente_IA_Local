@@ -127,3 +127,4 @@ def ejecutar_grafo (pregunta: str):
     respuesta = app.invoke({"messages": [pregunta]}, config)
 
     return respuesta["messages"][-1].content
+

@@ -5,11 +5,19 @@ import os
 from pathlib import Path
 import re
 from langchain.tools import tool
-from langchain_ollama import OllamaEmbeddings
+from langchain_ollama import OllamaEmbeddings, ChatOllama
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from pypdf import PdfReader
 from docx import Document
+
+
+resumir = ChatOllama(
+    model="qwen3",
+    temperature=0,
+    num_ctx= 16384
+)
+
 
 @tool
 def buscar_web(consulta: str) -> str:
@@ -99,13 +107,120 @@ def extraer_texto_archivo(ruta: Path)-> str:
             for parrafo in doc.paragraphs:
                 paginas.append(parrafo.text)
         else:
-            return "Los formatos que se aceptan son PDF, WORD, TXT y MD o MarkDown"
+            return "Ha habido un error los formatos que se aceptan son PDF, WORD, TXT y MD o MarkDown"
 
         salto_entre_resultados = "\n\n"
         return salto_entre_resultados.join(paginas)
         
     except Exception as e:
         return f"Ha habido un error al intentar leer el archivo. Error {e}"
+
+
+def cargar_texto(nombre: str) -> str:
+    """
+    Lee un documento del usuario cuando sea un documento largo (PDF, Word .docx, TXT o MD) de la carpeta "documentos" y devuelve su
+    texto.
+    Úsala cuando el usuario quiera resumir, analizar o preguntar sobre uno de sus documentos los cuales sean largos.
+
+    Args:
+        nombre: Nombre del archivo dentro de la carpeta "documentos", por ejemplo "informe.pdf"
+    """
+    proyecto = Path(__file__).resolve().parent
+    carpeta = (proyecto / "documentos").resolve()
+
+    # resolve() calcula a dónde apunta de verdad la ruta (quita los "..")
+    ruta = (carpeta / nombre).resolve()
+
+    # Seguridad: si la ruta se sale de "documentos" (por ejemplo "../../secreto.txt"), no se lee
+    if not ruta.is_relative_to(carpeta):
+        return "Ha habido un error no está permitido leer archivos fuera de la carpeta documentos"
+
+    # Si no existe o es una carpeta, decimos qué archivos sí hay para que el modelo pueda corregirse
+    if not ruta.is_file():
+        disponibles = [archivo.name for archivo in carpeta.iterdir() if archivo.is_file()]
+        if disponibles == []:
+            return "Ha habido un error no existe ese archivo y la carpeta documentos está vacía"
+        return f"Ha habido un error no existe el archivo '{nombre}'. Archivos disponibles: {', '.join(disponibles)}"
+
+    texto = extraer_texto_archivo(ruta)
+
+    return texto
+
+@tool
+def resumir_documento(nombre: str) -> str:
+    """
+    Resume un documento LARGO del usuario (PDF, Word .docx, TXT o MD) de la carpeta "documentos".
+    Lee el documento entero, lo resume por partes y devuelve un resumen final.
+    Úsala cuando el usuario quiera un resumen de un documento largo. Para documentos cortos usa leer_documento.
+
+    Args:
+        nombre: Nombre del archivo dentro de la carpeta "documentos", por ejemplo "informe.pdf"
+    """
+    texto = cargar_texto(nombre)
+
+    if texto.startswith("Ha habido un error"):
+        return texto
+
+    instrucciones_resumen = """
+    Eres un asistente que resume documentos. Respondes siempre en español.
+
+    Te paso UNA PARTE de un documento más largo. Resume solo esta parte.
+
+    REGLAS:
+    - Usa solo la información que aparece en el texto. No inventes datos ni añadas conocimientos tuyos.
+    - Conserva los datos importantes: nombres, fechas, cifras y conclusiones.
+    - Si hay una lista o una cita importante, cópiala palabra por palabra.
+    - No añadas opiniones ni comentarios tuyos.
+    - Escribe directamente el resumen, sin frases como "En este fragmento..." o "El texto habla de...".
+    - Máximo 150 palabras.
+
+    TEXTO:
+    """
+    
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=20000,     # Número máximo de caracteres por fragmento
+        chunk_overlap=200,   # Caracteres que coge del documento anterior para no perder contexto del anterior
+        separators=["\n\n", "\n", " ", ""]
+    )
+
+    chunks = splitter.split_text(texto)
+
+    resumenes = []
+
+    salto_entre_resultados = "\n\n" + "="*40 + "\n\n"
+
+    contador = 0
+
+    for text in chunks:
+        print(f"{contador} de {len(chunks)}")
+        contador += 1
+        resumido = resumir.invoke(instrucciones_resumen + text)
+        resumenes.append(resumido.content)
+
+
+    junto = salto_entre_resultados.join(resumenes)
+
+    instrucciones_final = """
+    Eres un asistente que resume documentos. Respondes siempre en español.
+
+    Te paso varios resúmenes de las partes de un mismo documento, en orden.
+    Escribe UN resumen final del documento completo.
+
+    REGLAS:
+    - Usa solo la información que aparece en los resúmenes. No inventes nada.
+    - Ordénalo por temas, no parte por parte. Si un dato se repite en varias partes, ponlo una sola vez.
+    - Conserva los datos importantes: nombres, fechas, cifras y conclusiones.
+    - Usa formato Markdown: un título, apartados con subtítulos y listas cuando ayuden.
+    - No digas "según los resúmenes" ni "en la parte 2": escribe como si hubieras leído el documento entero.
+
+    RESÚMENES:
+    """
+
+    resumen_final = resumir.invoke(instrucciones_final + junto)
+
+    return resumen_final.content
+
+
 
 @tool   
 def leer_documento(nombre: str) -> str:
@@ -256,3 +371,6 @@ def buscar_en_pagina(url:str, pregunta:str) -> str:
 
     return salto_entre_resultados.join(resume)
 
+if __name__ == "__main__":
+    resumido = resumir_documento.invoke({"nombre": "el-largo-viaje.pdf"})
+    print(resumido)
