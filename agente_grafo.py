@@ -6,7 +6,7 @@ from langchain_ollama import ChatOllama
 from langgraph.graph import MessagesState, StateGraph, END, START
 import sqlite3
 from langgraph.checkpoint.sqlite import SqliteSaver
-
+from conexion_mcp import cargar_herramientas_mcp
 #buscar_web Busca en internet como hace google
 
 #leer_texto Sacar el texto de una pagina concreta
@@ -77,6 +77,12 @@ funciones ={
      "resumir_documento": herramientas.resumir_documento,
      "leer_documento": herramientas.leer_documento
 }
+
+herramientas_mcp = cargar_herramientas_mcp()
+nombres_mcp = {herramienta.name for herramienta in herramientas_mcp}
+
+for herramienta in herramientas_mcp:
+    funciones[nombres_mcp] = herramienta
 
 llm_with_tools = llm.bind_tools(list(funciones.values()))
 
