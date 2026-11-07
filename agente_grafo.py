@@ -7,6 +7,7 @@ from langgraph.graph import MessagesState, StateGraph, END, START
 import sqlite3
 from langgraph.checkpoint.sqlite import SqliteSaver
 from conexion_mcp import cargar_herramientas_mcp
+import asyncio
 #buscar_web Busca en internet como hace google
 
 #leer_texto Sacar el texto de una pagina concreta
@@ -35,6 +36,7 @@ HERRAMIENTAS:
 - guardar_informe(titulo, contenido): guarda un informe en Markdown en la carpeta "informes".
 - resumir_documento(nombre): resume documentos largos de la carpeta de documentos.
 - leer_documento: lee el documento y devuelve el texto dentro de el.
+- fecha_hora(): devuelve la fecha y la hora EXACTAS de este momento (formato dd/mm/aaaa hh:mm). Úsala siempre que el usuario pregunte qué hora es o necesites la hora actual. La hora NO aparece en "DATOS DE HOY", así que nunca te la inventes: llama a la herramienta.
 
 CÓMO TRABAJAR:
 1. Usa buscar_web con una consulta clara para encontrar fuentes sobre la pregunta del usuario.
@@ -82,7 +84,7 @@ herramientas_mcp = cargar_herramientas_mcp()
 nombres_mcp = {herramienta.name for herramienta in herramientas_mcp}
 
 for herramienta in herramientas_mcp:
-    funciones[nombres_mcp] = herramienta
+        funciones[herramienta.name] = herramienta
 
 llm_with_tools = llm.bind_tools(list(funciones.values()))
 
@@ -98,7 +100,12 @@ def node_herramientas(state: MessagesState):
     ultimo = state["messages"][-1]
 
     for llamada in ultimo.tool_calls:
-        if llamada["name"] in funciones:
+
+        if llamada["name"] in nombres_mcp:
+            result = asyncio.run(funciones[llamada["name"]].ainvoke(llamada))
+            resultado.append(result)
+
+        elif llamada["name"] in funciones:
             result = funciones[llamada["name"]].invoke(llamada)
             resultado.append(result)
 
