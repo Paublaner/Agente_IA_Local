@@ -1,5 +1,5 @@
 import ollama
-import herramientas
+from agente import herramientas
 import locale
 import datetime
 

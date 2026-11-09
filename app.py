@@ -1,11 +1,15 @@
 import uuid
 from pathlib import Path
 import streamlit as st
-from agente_grafo import ejecutar_grafo
+from agente.agente_grafo import ejecutar_grafo, memory
+from integraciones import auth_gmail
 
 st.set_page_config(page_title="Agente de investigación", page_icon="🔎", layout="centered")
 
-carpeta_documentos = Path(__file__).resolve().parent / "documentos"
+# Si venimos de aceptar en Google (?code=...), terminar el inicio de sesión antes de pintar nada
+auth_gmail.completar_conexion()
+
+carpeta_documentos = Path(__file__).resolve().parent / "datos" / "documentos"
 carpeta_documentos.mkdir(exist_ok=True)
 
 # Cómo se enseña cada herramienta mientras el agente trabaja: icono, texto y qué argumento mostrar
@@ -16,6 +20,9 @@ etiquetas = {
     "leer_documento":    ("📂", "Leyendo el documento", "nombre"),
     "resumir_documento": ("📚", "Resumiendo el documento (puede tardar)", "nombre"),
     "guardar_informe":   ("💾", "Guardando el informe", "titulo"),
+    "listar_correos":    ("📧", "Buscando en tu Gmail", "busqueda"),
+    "leer_correo":       ("📖", "Leyendo el correo", "id_correo"),
+    "fecha_hora":        ("🕒", "Mirando la hora", None),
 }
 
 sugerencias = [
@@ -46,6 +53,26 @@ with st.sidebar:
         st.session_state.hilo = str(uuid.uuid4())
         st.session_state.mensajes = []
         st.rerun()
+
+    # ---------- Gmail del usuario ----------
+    st.divider()
+    st.markdown("#### 📧 Tu Gmail")
+
+    if "aviso_gmail" in st.session_state:
+        st.warning(st.session_state.pop("aviso_gmail"))
+
+    if auth_gmail.credenciales_actuales() is None:
+        st.caption("Conecta tu cuenta para que el agente pueda leer tus correos (solo lectura).")
+        # Se abre en otra pestaña: al volver de Google, sigue en esa pestaña nueva
+        st.link_button("Conectar Gmail", auth_gmail.enlace_conexion(), width="stretch")
+    else:
+        st.success(f"Conectado como **{st.session_state.email_gmail}**")
+        if st.button("Cerrar sesión", width="stretch"):
+            auth_gmail.desconectar()
+            memory.delete_thread(st.session_state.hilo)  # borra de memoria.db lo que haya leído de tus correos
+            st.session_state.hilo = str(uuid.uuid4())
+            st.session_state.mensajes = []
+            st.rerun()
 
     st.divider()
     st.markdown("#### 📂 Tus documentos")
@@ -108,7 +135,7 @@ if pregunta:
 
         with st.status("Pensando...", expanded=True) as estado:
             try:
-                for tipo, dato in ejecutar_grafo(pregunta, st.session_state.hilo):
+                for tipo, dato in ejecutar_grafo(auth_gmail.credenciales_actuales(),pregunta, st.session_state.hilo):
                     if tipo == "herramienta":
                         paso = texto_paso(dato)
                         pasos.append(paso)

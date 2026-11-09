@@ -221,6 +221,12 @@ __marimo__/
 
 # Agente IA
 memoria.db*
-documentos/*
-!documentos/.gitkeep
-informes/Luc*.md
+datos/documentos/*
+!datos/documentos/.gitkeep
+datos/informes/Luc*.md
+
+# Credenciales de Google (Gmail)
+credenciales/
+credentials.json
+token.json
+client_secret_*.json

@@ -1,7 +1,9 @@
 from mcp.server.fastmcp import FastMCP
 from datetime import datetime
 
+
 mcp = FastMCP("mcp_prueba")
+
 
 @mcp.tool()
 def fecha_hora() ->str:
