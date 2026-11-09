@@ -3,6 +3,8 @@ from pathlib import Path
 import streamlit as st
 from agente.agente_grafo import ejecutar_grafo, memory
 from integraciones import auth_gmail
+from faster_whisper import decode_audio
+from voz.oido import transcribir   # el mismo oído que usa voz/conversacion.py
 
 st.set_page_config(page_title="Agente de investigación", page_icon="🔎", layout="centered")
 
@@ -119,7 +121,20 @@ for rol, texto, pasos in st.session_state.mensajes:
                     st.markdown(paso)
         st.markdown(texto)
 
-pregunta = st.chat_input("Pregunta lo que quieras...")
+# accept_audio=True añade un botón de micrófono dentro de la caja del chat.
+# El navegador graba y Streamlit nos da el audio ya a 16 kHz (lo que quiere Whisper)
+entrada = st.chat_input("Escribe o pulsa el micrófono para hablar...", accept_audio=True)
+
+pregunta = None
+if entrada is not None:
+    pregunta = entrada.text.strip()
+    if entrada.audio is not None:
+        with st.spinner("Escuchando lo que has dicho..."):
+            # decode_audio convierte el archivo de audio en los números que espera transcribir()
+            dicho = transcribir(decode_audio(entrada.audio))
+        if dicho == "":
+            st.toast("No he entendido el audio. Prueba a hablar más cerca del micrófono.", icon="🎤")
+        pregunta = f"{pregunta} {dicho}".strip()   # por si ha escrito algo y además ha hablado
 
 # Si ha pulsado una sugerencia, se usa como si la hubiera escrito
 if "pendiente" in st.session_state:

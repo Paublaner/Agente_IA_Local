@@ -230,3 +230,6 @@ credenciales/
 credentials.json
 token.json
 client_secret_*.json
+
+# Modelos de voz (se descargan, pesan mucho)
+voz/voces/
