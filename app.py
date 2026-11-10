@@ -5,6 +5,7 @@ from agente.agente_grafo import ejecutar_grafo, memory
 from integraciones import auth_gmail
 from faster_whisper import decode_audio
 from voz.oido import transcribir   # el mismo oído que usa voz/conversacion.py
+from voz.boca import sintetizar_wav  # la misma voz de Piper que hablar(), pero para el navegador
 
 st.set_page_config(page_title="Agente de investigación", page_icon="🔎", layout="centered")
 
@@ -55,6 +56,9 @@ with st.sidebar:
         st.session_state.hilo = str(uuid.uuid4())
         st.session_state.mensajes = []
         st.rerun()
+
+    # Si hablas por el micro, siempre te contesta con voz. Esto es para que también lo haga al escribir
+    voz_siempre = st.toggle("🔊 Leer también las respuestas escritas", value=False)
 
     # ---------- Gmail del usuario ----------
     st.divider()
@@ -121,11 +125,17 @@ for rol, texto, pasos in st.session_state.mensajes:
                     st.markdown(paso)
         st.markdown(texto)
 
+# La voz de la última respuesta. Se saca con pop para que suene UNA vez:
+# en la siguiente recarga de la página ya no está y no se repite
+if "audio_respuesta" in st.session_state:
+    st.audio(st.session_state.pop("audio_respuesta"), format="audio/wav", autoplay=True)
+
 # accept_audio=True añade un botón de micrófono dentro de la caja del chat.
 # El navegador graba y Streamlit nos da el audio ya a 16 kHz (lo que quiere Whisper)
 entrada = st.chat_input("Escribe o pulsa el micrófono para hablar...", accept_audio=True)
 
 pregunta = None
+por_voz = False   # ¿ha hablado? Si es así, se le contesta hablando
 if entrada is not None:
     pregunta = entrada.text.strip()
     if entrada.audio is not None:
@@ -134,6 +144,8 @@ if entrada is not None:
             dicho = transcribir(decode_audio(entrada.audio))
         if dicho == "":
             st.toast("No he entendido el audio. Prueba a hablar más cerca del micrófono.", icon="🎤")
+        else:
+            por_voz = True
         pregunta = f"{pregunta} {dicho}".strip()   # por si ha escrito algo y además ha hablado
 
 # Si ha pulsado una sugerencia, se usa como si la hubiera escrito
@@ -166,6 +178,13 @@ if pregunta:
                 respuesta = f"Ha habido un error: {e}"
 
         st.markdown(respuesta)
+
+        if (por_voz or voz_siempre) and respuesta:
+            with st.spinner("Preparando la voz..."):
+                try:
+                    st.session_state.audio_respuesta = sintetizar_wav(respuesta)
+                except Exception as e:
+                    st.toast(f"No he podido generar la voz: {e}", icon="🔇")
 
     st.session_state.mensajes.append(("user", pregunta, []))
     st.session_state.mensajes.append(("assistant", respuesta, pasos))
