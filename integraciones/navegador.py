@@ -2,6 +2,8 @@ from playwright.sync_api import sync_playwright
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from integraciones import gmail
+import atexit
+
 
 LIMITE = 8000
 ESPERA_MAXIMA = 15000
@@ -22,6 +24,8 @@ def obtener_pagina():
 
         PAGINA = NAVEGADOR.new_page()
 
+        cerrar_navegador
+
     return PAGINA
     
 
@@ -32,10 +36,10 @@ def leer_pagina(url: str):
 
     try:
 
-        PAGINA = obtener_pagina()
+        pagina = obtener_pagina()
 
-        PAGINA.goto(url, timeout=ESPERA_MAXIMA)
-        texto = PAGINA.inner_text("body")
+        pagina.goto(url, timeout=ESPERA_MAXIMA)
+        texto = pagina.inner_text("body")
 
     except PlaywrightTimeoutError:
         return f"Ha habido un error: la página {url} ha tardado más de {ESPERA_MAXIMA // 1000} segundos en cargar"
@@ -47,13 +51,26 @@ def leer_pagina(url: str):
 
     if len(texto_limpio) > LIMITE:
         total = len(texto_limpio)
-        cuerpo = texto_limpio[:LIMITE] + f"\n\n[AVISO: correo recortado. Se muestran {LIMITE} de {total} caracteres; el resto no se ha leído.]"
+        cuerpo = texto_limpio[:LIMITE] + f"\n\n[Se muestran {LIMITE} de {total} caracteres; el resto no se ha leído.]"
         return cuerpo
 
     return texto_limpio
 
+@atexit.register
+def cerrar_navegador():
+    
+    global PLAYWRIGHT, NAVEGADOR, PAGINA
 
+    if NAVEGADOR is None:
+        return 
 
+    NAVEGADOR.close()
+    PLAYWRIGHT.stop()
+
+    NAVEGADOR = None
+    PLAYWRIGHT = None
+    PAGINA = None
+    
 
 if __name__ == "__main__":
     print(leer_pagina("wikipedia.org"))
