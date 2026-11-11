@@ -70,7 +70,31 @@ def cerrar_navegador():
     NAVEGADOR = None
     PLAYWRIGHT = None
     PAGINA = None
-    
+
+
+
+def nombre_elemento(el):
+    texto = el.inner_text().strip()
+    atributo_aria_label = el.get_attribute("aria-label")
+    atributo_place_holder = el.get_attribute("placeholder")
+    atributo_name = el.get_attribute("name")
+
+    return texto or atributo_aria_label or atributo_place_holder or atributo_name
+
+
+def listar_elementos():
+    selector = 'a, button, input, select, textarea, [role="button"]'
+    pagina = obtener_pagina()
+    elementos = pagina.locator(selector)
+
+    for el in elementos.all():
+
+        if el.is_visible():
+            etiqueta = el.evaluate('el => el.tagName')
+            nombre = nombre_elemento(el)
+            print(f"{nombre},  {etiqueta}")
+            
+
 
 if __name__ == "__main__":
     print(leer_pagina("wikipedia.org"))
