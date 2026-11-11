@@ -1,6 +1,8 @@
 import io
 import re
 import wave
+import asyncio
+import edge_tts
 import sounddevice as sd
 from pathlib import Path
 from piper import PiperVoice
