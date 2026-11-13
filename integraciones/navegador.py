@@ -125,6 +125,26 @@ def clicar(numero: int):
     return f'He clicado en [{numero}] "{nombre}". Ahora estás en {pagina.url}\n\nElementos de la página actual:\n{listar_elementos()}'
 
 
+def escribir(numero: int, texto: str):
+    if numero < 1 or numero > len(ELEMENTOS):
+        return f"Ha habido un error: no existe el elemento {numero}. Usa listar_elementos para ver los números disponibles."
+
+    el = ELEMENTOS[numero - 1]
+    nombre = nombre_elemento(el)
+
+    try:
+        el.fill(texto, timeout=ESPERA_MAXIMA)
+
+
+    except PlaywrightTimeoutError:
+        return f'Ha habido un error: no se ha podido introducir texto en [{numero}] "{nombre}" en {ESPERA_MAXIMA // 1000} segundos (puede estar tapado o desactivado).'
+
+    except PlaywrightError as e:
+        primera_linea = str(e).splitlines()[0]
+        return f'Ha habido un error al introducir el texto en [{numero}] "{nombre}": {primera_linea}'
+
+    return f'Se ha introducido el texto en [{numero}] "{nombre}"'
+
 if __name__ == "__main__":
     # Prueba 1: la página de login
     leer_pagina("https://the-internet.herokuapp.com/login")
@@ -158,4 +178,37 @@ if __name__ == "__main__":
     print(clicar(50))
     print(clicar(0))
     print(clicar(-1))
+
+    print("\n==========\n")
+
+    # Prueba 5: login completo (escribir usuario y contraseña y clicar en Login)
+    leer_pagina("https://the-internet.herokuapp.com/login")
+    listar_elementos()
+
+    numero_usuario = None
+    numero_password = None
+    numero_login = None
+    numero_enlace = None
+    for i, el in enumerate(ELEMENTOS):
+        nombre = nombre_elemento(el)
+        if nombre == "username":
+            numero_usuario = i + 1
+        elif nombre == "password":
+            numero_password = i + 1
+        elif nombre == "Login":
+            numero_login = i + 1
+        elif nombre == "Elemental Selenium":
+            numero_enlace = i + 1
+
+    print(escribir(numero_usuario, "tomsmith"))
+    print(escribir(numero_password, "SuperSecretPassword!"))
+
+    # Prueba 6: escribir en un enlace (debe dar error, no romper)
+    print(escribir(numero_enlace, "hola"))
+
+    # Prueba 7: número que no existe
+    print(escribir(99, "hola"))
+
+    # Si el login ha ido bien, la URL debe acabar en /secure
+    print(clicar(numero_login))
 
