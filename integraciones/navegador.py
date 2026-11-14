@@ -3,6 +3,7 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from integraciones import gmail
 import atexit
+from pathlib import Path
 
 
 LIMITE = 8000
@@ -11,6 +12,8 @@ NAVEGADOR = None
 PLAYWRIGHT = None
 PAGINA = None
 ELEMENTOS = []
+DATA = str(Path(__file__).resolve().parent.parent / "datos" / "user_data_dir")
+ESPERA_LOGIN = 120000
 
 def obtener_pagina():
 
@@ -20,11 +23,11 @@ def obtener_pagina():
 
         PLAYWRIGHT = sync_playwright().start()
         
-        NAVEGADOR = PLAYWRIGHT.chromium.launch(headless=False)
+        NAVEGADOR = PLAYWRIGHT.chromium.launch_persistent_context(DATA, headless=False)
 
-        PAGINA = NAVEGADOR.new_page()
+        paginas = NAVEGADOR.pages
 
-        cerrar_navegador
+        PAGINA = paginas[0]
 
     return PAGINA
     
@@ -145,6 +148,24 @@ def escribir(numero: int, texto: str):
 
     return f'Se ha introducido el texto en [{numero}] "{nombre}"'
 
+
+def iniciar_sesion_manual(url: str):
+
+    try:
+        pagina = obtener_pagina()
+        pagina.goto(url, timeout=ESPERA_MAXIMA)
+        pagina.wait_for_selector("input[type=password]", state="hidden", timeout=ESPERA_LOGIN)
+        pagina.wait_for_load_state(timeout=ESPERA_MAXIMA)
+        siguiente_url = pagina.url
+
+    except PlaywrightTimeoutError:
+        return f'Ha habido un error al iniciar sesion en la URL: {url} se ha acabado el tiempo'
+    except PlaywrightError as e:
+        primera_linea = str(e).splitlines()[0]
+        return f"Ha habido un error al iniciar sesion en la URL: {url} con el siguiente error de codigo: {primera_linea}"
+
+    return f"Se ha iniciado sesion correctamente y se ha pasado a la siguiente URL: {siguiente_url}"
+
 if __name__ == "__main__":
     # Prueba 1: la página de login
     leer_pagina("https://the-internet.herokuapp.com/login")
@@ -211,4 +232,13 @@ if __name__ == "__main__":
 
     # Si el login ha ido bien, la URL debe acabar en /secure
     print(clicar(numero_login))
+
+    print("\n==========\n")
+
+    # Prueba 8: login MANUAL. Primero cerramos la sesión de la prueba 5
+    # para que vuelva a salir el formulario.
+    leer_pagina("https://the-internet.herokuapp.com/logout")
+    print("Inicia sesión A MANO en la ventana del navegador (tomsmith / SuperSecretPassword!)...")
+    print(iniciar_sesion_manual("https://the-internet.herokuapp.com/login"))
+    # Si ha ido bien, la URL del mensaje debe acabar en /secure
 

@@ -225,6 +225,9 @@ datos/documentos/*
 !datos/documentos/.gitkeep
 datos/informes/Luc*.md
 
+# Perfil del navegador (cookies y sesiones iniciadas, p. ej. LinkedIn)
+datos/user_data_dir/
+
 # Credenciales de Google (Gmail)
 credenciales/
 credentials.json
