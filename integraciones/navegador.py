@@ -4,8 +4,10 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from integraciones import gmail
 import atexit
 from pathlib import Path
+import queue
+import threading
 
-
+ENCARGOS = queue.Queue()
 LIMITE = 8000
 ESPERA_MAXIMA = 15000
 NAVEGADOR = None
@@ -14,7 +16,38 @@ PAGINA = None
 ELEMENTOS = []
 DATA = str(Path(__file__).resolve().parent.parent / "datos" / "user_data_dir")
 ESPERA_LOGIN = 120000
+HILO = None
 
+def encargado():
+    while True:
+        encargo = ENCARGOS.get()
+        funcion = encargo[0]
+        args = encargo[1]
+        respuesta = encargo[2]
+
+        try:
+            resultado = funcion(*args)
+        except Exception as e:
+            primera_linea = str(e).splitlines()[0] if str(e) else type(e).__name__
+            resultado = f"Ha habido un error inesperado en el navegador ({funcion.__name__}): {primera_linea}"
+
+        respuesta.put(resultado)
+            
+def en_hilo_navegador(funcion, *argumentos):
+    global HILO
+
+    if HILO is None:
+        HILO = threading.Thread(target=encargado, daemon=True)
+        HILO.start()
+
+    respuesta = queue.Queue()
+
+    ENCARGOS.put((funcion, argumentos, respuesta))
+
+    return respuesta.get()
+
+
+    
 def obtener_pagina():
 
     global PLAYWRIGHT, NAVEGADOR, PAGINA
@@ -23,7 +56,7 @@ def obtener_pagina():
 
         PLAYWRIGHT = sync_playwright().start()
         
-        NAVEGADOR = PLAYWRIGHT.chromium.launch_persistent_context(DATA, headless=False)
+        NAVEGADOR = PLAYWRIGHT.chromium.launch_persistent_context(DATA, args= ["--disable-blink-features=AutomationControlled"], headless=False,channel="chrome")
 
         paginas = NAVEGADOR.pages
 
@@ -59,13 +92,12 @@ def leer_pagina(url: str):
 
     return texto_limpio
 
-@atexit.register
 def cerrar_navegador():
-    
+
     global PLAYWRIGHT, NAVEGADOR, PAGINA
 
     if NAVEGADOR is None:
-        return 
+        return
 
     NAVEGADOR.close()
     PLAYWRIGHT.stop()
@@ -73,6 +105,15 @@ def cerrar_navegador():
     NAVEGADOR = None
     PLAYWRIGHT = None
     PAGINA = None
+
+
+@atexit.register
+def al_salir():
+    if HILO is None:
+        cerrar_navegador()
+        return
+
+    en_hilo_navegador(cerrar_navegador)
 
 
 
@@ -88,7 +129,7 @@ def nombre_elemento(el):
 def listar_elementos():
     global ELEMENTOS
     ELEMENTOS = []
-    selector = 'a, button, input, select, textarea, [role="button"]'
+    selector = 'a, button, input, select, textarea, [role="button"], [contenteditable="true"], [role="textbox"]'
     pagina = obtener_pagina()
     elementos = pagina.locator(selector)
     lineas = []
@@ -154,6 +195,7 @@ def iniciar_sesion_manual(url: str):
     try:
         pagina = obtener_pagina()
         pagina.goto(url, timeout=ESPERA_MAXIMA)
+        pagina.wait_for_selector("input[type=password]", state="visible", timeout=ESPERA_LOGIN)
         pagina.wait_for_selector("input[type=password]", state="hidden", timeout=ESPERA_LOGIN)
         pagina.wait_for_load_state(timeout=ESPERA_MAXIMA)
         siguiente_url = pagina.url
