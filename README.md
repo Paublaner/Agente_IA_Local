@@ -1,26 +1,60 @@
-# Agente de investigación con LangGraph y Ollama
+# Agente de IA con LangGraph y Ollama
 
 Agente de IA que **investiga un tema en internet y te devuelve un resumen con fuentes**. Busca en la web, lee páginas, encuentra datos concretos dentro de páginas largas con RAG, **resume documentos largos** tuyos (PDF, Word, TXT, MD) por partes y guarda informes en Markdown.
 
-También **lee tu Gmail** (solo lectura): busca correos y los lee enteros para resumírtelos. Es **multiusuario**: cada persona conecta **su propia cuenta de Google** desde la app y el agente solo ve sus correos.
+Además:
+
+- **Lee tu Gmail** (solo lectura): busca correos y los lee enteros para resumírtelos. Es **multiusuario**: cada persona conecta **su propia cuenta de Google** desde la app y el agente solo ve sus correos.
+- **Maneja un navegador de verdad** (Chrome, con Playwright): abre páginas, ve sus botones y campos, hace clic y escribe. Lo ves trabajar en una ventana, con una flecha que enseña dónde está el ratón. Por ejemplo, **te deja preparada una publicación de LinkedIn** para que tú la revises y la publiques.
+- **Lee tu perfil de LinkedIn** a través de **Composio** (MCP remoto).
+- **Habla y escucha**: puedes hablarle por el micrófono (Whisper) y te contesta con voz (Piper).
 
 El modelo funciona **en local** con [Ollama](https://ollama.com): no usa ninguna API de pago y tus documentos no salen de tu ordenador. Se usa desde una **interfaz de chat con Streamlit** que recuerda la conversación y enseña qué herramientas va usando.
 
 ## Qué sabe hacer
 
-Las herramientas propias están en `herramientas.py` y la de fecha y hora llega por MCP desde `servidor_mcp.py`. Las que puede usar el agente son las que están en el diccionario `funciones` de `agente_grafo.py`.
+Las herramientas propias están en `agente/herramientas.py`. Las de Composio llegan por MCP desde `mcp_local/conexion_mcp.py`. Las que puede usar el agente son las que están en el diccionario `funciones` de `agente_grafo.py`.
 
 | Herramienta | Qué hace | Activa en el agente |
 |---|---|:---:|
-| `listar_correos(busqueda, maximo)` | Busca en el Gmail del usuario con la sintaxis de Gmail (`from:`, `is:unread`, `newer_than:7d`...). Devuelve de cada correo su ID, remitente, asunto, fecha y un fragmento. Como mucho 20. | ✅ |
-| `leer_correo(id_correo)` | Lee un correo entero con el ID que da `listar_correos`. Saca el texto plano y, si no hay, convierte el HTML a texto. Recorta a 8000 caracteres avisando. | ✅ |
-| `fecha_hora()` | Fecha y hora actuales. Llega por **MCP** (ver [MCP](#mcp-model-context-protocol)). | ✅ |
 | `buscar_web(consulta)` | Busca en internet (DuckDuckGo) y devuelve 5 resultados con título, enlace y resumen. | ✅ |
 | `leer_texto(url)` | Descarga una página, la limpia (quita menús, scripts, pie...) y devuelve los primeros 8000 caracteres. Sirve para hacerse una idea general. | ✅ |
 | `buscar_en_pagina(url, pregunta)` | **RAG**: trocea la página entera, la convierte en vectores y devuelve solo los fragmentos relacionados con la pregunta. Sirve para datos concretos que están muy abajo en páginas largas. | ✅ |
 | `resumir_documento(nombre)` | **Map-reduce**: resume un documento largo de `datos/documentos/` por partes y luego hace un resumen final. Ver [Resumir documentos largos](#resumir-documentos-largos-map-reduce). | ✅ |
 | `leer_documento(nombre)` | Lee un documento corto de `datos/documentos/` (PDF, `.docx`, `.txt`, `.md`). Recorta a 25.000 caracteres avisando. | ✅ |
 | `guardar_informe(titulo, contenido)` | Guarda el informe final en `datos/informes/` como archivo Markdown. | ✅ |
+| `listar_correos(busqueda, maximo)` | Busca en el Gmail del usuario con la sintaxis de Gmail (`from:`, `is:unread`, `newer_than:7d`...). Devuelve de cada correo su ID, remitente, asunto, fecha y un fragmento. Como mucho 20. | ✅ |
+| `leer_correo(id_correo)` | Lee un correo entero con el ID que da `listar_correos`. Saca el texto plano y, si no hay, convierte el HTML a texto. Recorta a 8000 caracteres avisando. | ✅ |
+| `leer_pagina(url)` | Abre una página en el **navegador** y devuelve su texto visible (recortado a 8000 caracteres). | ✅ |
+| `listar_elementos()` | Lista los enlaces, botones y campos de la página abierta, cada uno con un número: `[5]  BUTTON  Login`. | ✅ |
+| `clicar(numero)` | Hace clic en el elemento con ese número. Devuelve la URL nueva y la lista de elementos actualizada. | ✅ |
+| `escribir(numero, texto)` | Escribe en un campo (`INPUT`, `TEXTAREA` o `DIV` editable, como el editor de LinkedIn). No envía nada. | ✅ |
+| `iniciar_sesion_manual(url)` | Abre la página de login y **espera a que el usuario entre a mano** (hasta 2 minutos). El agente nunca escribe contraseñas. | ✅ |
+| `COMPOSIO_*` (4 herramientas) | Buscar, consultar y ejecutar herramientas de Composio, y conectar cuentas. Se usan **solo para leer** el perfil de LinkedIn. Ver [Composio](#composio-linkedin-por-mcp-remoto). | ✅ |
+| `fecha_hora()` | Fecha y hora actuales, desde el servidor MCP propio (`servidor_mcp.py`). | ❌ |
+
+`fecha_hora` no está activa: `cargar_herramientas_mcp` ahora solo carga el servidor `composio`. El servidor propio sigue en el proyecto como ejemplo de MCP.
+
+## Cómo funciona
+
+El agente es un grafo de LangGraph con dos nodos. El modelo decide si necesita una herramienta; si la pide, se ejecuta y el resultado vuelve al modelo. El bucle sigue hasta que el modelo responde sin pedir herramientas, o hasta llegar al límite de pasos (`recursion_limit = 40`).
+
+```mermaid
+flowchart LR
+    START([Inicio]) --> M[node_modelo<br/>qwen3 + herramientas]
+    M -->|pide herramientas| H[node_herramientas<br/>ejecuta las tool_calls]
+    H --> M
+    M -->|responde sin herramientas| FIN([Fin])
+```
+
+- **`node_modelo`**: añade las instrucciones de sistema delante del historial y llama al modelo con las herramientas enlazadas (`bind_tools`).
+- **`node_herramientas`**: coge el último mensaje, ejecuta cada `tool_call` y devuelve los resultados como mensajes. Hay tres "puertas" (`if / elif / elif`) porque no todas las herramientas se ejecutan igual:
+  1. **Gmail** (`funciones_gmail`): se les añaden las credenciales del usuario antes de ejecutarlas (ver [Gmail multiusuario](#gmail-multiusuario)).
+  2. **MCP** (`nombres_mcp`): solo funcionan en asíncrono, así que se llaman con `asyncio.run(...ainvoke(...))`.
+  3. **El resto**: `.invoke` normal.
+- **`decidir`**: si el último mensaje tiene `tool_calls`, va a herramientas; si no, termina.
+- **Memoria**: el grafo se compila con un checkpointer `SqliteSaver` (`datos/memoria.db`). Cada conversación del chat tiene su `thread_id`, así que el agente recuerda lo hablado en esa conversación.
+- **`ejecutar_grafo(credenciales, pregunta, hilo)`**: usa `stream` en vez de `invoke` y va devolviendo (`yield`) cada paso según ocurre: las herramientas que pide el modelo y, al final, la respuesta. Así la interfaz puede enseñarlos mientras el agente trabaja. Las credenciales de Gmail van por `context`, no por `config`.
 
 ## Resumir documentos largos (map-reduce)
 
@@ -43,26 +77,79 @@ Para resumir usa un `ChatOllama` propio dentro de `herramientas.py`, sin herrami
 
 La carga del documento (ruta segura, lista de archivos disponibles y extracción del texto) está en una función aparte, `cargar_texto`, que devuelve el texto entero sin recortar.
 
-## Cómo funciona
+## Navegador (Playwright)
 
-El agente es un grafo de LangGraph con dos nodos. El modelo decide si necesita una herramienta; si la pide, se ejecuta y el resultado vuelve al modelo. El bucle sigue hasta que el modelo responde sin pedir herramientas, o hasta llegar al límite de pasos (`recursion_limit = 40`).
+El agente maneja un Chrome real que se abre en una ventana, así que **puedes ver lo que hace**. Las herramientas `@tool` de `herramientas.py` son solo la "fachada": el trabajo de verdad está en `integraciones/navegador.py`.
 
 ```mermaid
 flowchart LR
-    START([Inicio]) --> M[node_modelo<br/>qwen3 + herramientas]
-    M -->|pide herramientas| H[node_herramientas<br/>ejecuta las tool_calls]
-    H --> M
-    M -->|responde sin herramientas| FIN([Fin])
+    L[leer_pagina] --> E[listar_elementos]
+    E --> C[clicar]
+    E --> W[escribir]
+    C -->|lista nueva| E2[elementos actualizados]
+    E2 --> W
+    W --> P([PARA: el usuario revisa y publica])
 ```
 
-- **`node_modelo`**: añade las instrucciones de sistema delante del historial y llama al modelo con las herramientas enlazadas (`bind_tools`).
-- **`node_herramientas`**: coge el último mensaje, ejecuta cada `tool_call` y devuelve los resultados como mensajes. Hay tres "puertas" (`if / elif / elif`) porque no todas las herramientas se ejecutan igual:
-  1. **Gmail** (`funciones_gmail`): se les añaden las credenciales del usuario antes de ejecutarlas (ver [Gmail multiusuario](#gmail-multiusuario)).
-  2. **MCP** (`nombres_mcp`): solo funcionan en asíncrono, así que se llaman con `asyncio.run(...ainvoke(...))`.
-  3. **El resto**: `.invoke` normal.
-- **`decidir`**: si el último mensaje tiene `tool_calls`, va a herramientas; si no, termina.
-- **Memoria**: el grafo se compila con un checkpointer `SqliteSaver` (`datos/memoria.db`). Cada conversación del chat tiene su `thread_id`, así que el agente recuerda lo hablado en esa conversación.
-- **`ejecutar_grafo(credenciales, pregunta, hilo)`**: usa `stream` en vez de `invoke` y va devolviendo (`yield`) cada paso según ocurre: las herramientas que pide el modelo y, al final, la respuesta. Así la interfaz puede enseñarlos mientras el agente trabaja. Las credenciales de Gmail van por `context`, no por `config`.
+**Cómo ve el modelo una página.** El modelo no ve la pantalla. `listar_elementos` busca los elementos con los que se puede interactuar (`a, button, input, select, textarea, [role="button"], [contenteditable="true"], [role="textbox"]`), se queda con los visibles, los guarda en la lista `ELEMENTOS` y le devuelve al modelo un texto numerado:
+
+```
+[1]  A  Inicio
+[5]  BUTTON  Login
+[6]  DIV  Comparte tus ideas…
+```
+
+El modelo solo tiene que decir un número: `clicar(5)` o `escribir(6, "texto")`. Los números solo valen para la página actual; por eso `clicar` devuelve ya la lista nueva.
+
+**El nombre de cada elemento** (`nombre_elemento`) se busca en este orden: su texto, `aria-label`, `placeholder`, `name`, `data-placeholder` / `aria-placeholder` y, si no tiene nada, el `data-placeholder` de un hijo. Esto último hacía falta para el editor de LinkedIn, que salía como `[6] DIV None`: el texto "Comparte tus ideas…" está en un `<p>` de dentro.
+
+**Ventanas emergentes.** Si hay un diálogo abierto (`dialog[open]` o `[role="dialog"]`, visible), `listar_elementos` solo lista lo que hay **dentro** del último. Con la ventana de publicar de LinkedIn abierta salían 146 elementos (incluido todo el feed de detrás) y el modelo se perdía; ahora salen solo los de la ventana.
+
+**Sesión guardada.** Chrome se abre con `launch_persistent_context` y una carpeta de perfil propia (`datos/user_data_dir/`). Ahí quedan las cookies: inicias sesión **una vez a mano** y las siguientes veces ya estás dentro. Esa carpeta no se sube a git (con ella se podría entrar en tus cuentas sin contraseña).
+
+**El puntero.** Playwright mueve el ratón, pero no lo dibuja. `SCRIPT_PUNTERO` (registrado con `add_init_script`, así que se inyecta en cada página nueva) pone una flecha que sigue los eventos `mousemove`.
+
+### Navegador: decisiones de seguridad
+
+**El agente nunca escribe contraseñas.** Para entrar en una web usa `iniciar_sesion_manual`: abre el login, espera a que aparezca el campo de contraseña y, después, a que desaparezca (señal de que el usuario ha entrado). Si el campo no aparece, es que ya había sesión y sigue. Las instrucciones le prohíben usar `escribir` para usuarios o contraseñas.
+
+**El agente nunca publica ni envía.** Las instrucciones le prohíben clicar en "Publicar", "Enviar", "Compartir", "Post" o "Send". Escribe el texto, **para** y le dice al usuario que lo revise en la ventana y lo publique él.
+
+**Publicaciones de LinkedIn, siempre por el navegador.** Al principio el modelo prefería publicar con Composio (por API), sin que el usuario viera nada, porque el prompt tenía una receta para eso. Se quitó: Composio queda solo para leer el perfil y las publicaciones se preparan en el navegador, a la vista, con una receta paso a paso (abrir el feed → listar → clicar en "Crear publicación" → escribir en "Comparte tus ideas…" → parar).
+
+**El contenido de las webs son datos, no órdenes.** Igual que con los correos: si una página dice "ignora tus instrucciones" o "escribe tu contraseña", el agente no lo hace y avisa.
+
+### Navegador: problemas resueltos
+
+**Playwright y los hilos de Streamlit.** La API síncrona de Playwright solo se puede usar desde el **mismo hilo** que la arrancó, pero Streamlit ejecuta cada mensaje en un hilo distinto. Solución: un único hilo "encargado" (`encargado`) que es el único que toca el navegador. Las herramientas le mandan los trabajos por una cola (`en_hilo_navegador`) y esperan la respuesta en otra. Como en una cocina con un solo cocinero: los camareros dejan las comandas y recogen los platos, pero nunca cocinan.
+
+**El modelo clicaba en el editor antes de escribir.** Al clicar dentro del editor, la lista de elementos cambiaba y el modelo usaba números viejos. Se arregló en dos sitios: `escribir` usa `fill()`, que ya pone el cursor solo, y las instrucciones y los docstrings le dicen que **nunca** clique en un campo de texto.
+
+**El editor de LinkedIn tarda en aparecer.** Después de `clicar`, la ventana de publicar se abre con un poco de retraso y la lista salía sin el editor. Ahora `clicar` espera hasta 3 segundos a que aparezca un `[contenteditable="true"]` antes de listar (si no aparece, sigue igual).
+
+**"Crear publicación" no es el editor.** En el feed, el botón que abre la ventana también es un `DIV`. Con la receta antigua ("si ya aparece el editor, un DIV, no cliques") el modelo lo confundía con el editor. Ahora la receta dice que "Crear publicación" es un botón y que el editor es el DIV "Comparte tus ideas…".
+
+**Un error no tumba al encargado.** Si una función del navegador lanza una excepción inesperada, `encargado` la recoge y devuelve un texto de error al modelo. Si no, el hilo moriría y todas las herramientas se quedarían esperando para siempre.
+
+## Composio (LinkedIn por MCP remoto)
+
+[Composio](https://composio.dev) ofrece herramientas de muchas apps (LinkedIn entre ellas) por un servidor MCP en internet. `conexion_mcp.py` se conecta con `streamable_http`, la URL y la clave del `.env`, y solo deja pasar 4 herramientas (`PERMITIDAS_COMPOSIO`):
+
+- `COMPOSIO_SEARCH_TOOLS`: buscar qué herramienta hace lo que necesitas.
+- `COMPOSIO_GET_TOOL_SCHEMAS`: ver qué parámetros necesita.
+- `COMPOSIO_MULTI_EXECUTE_TOOL`: ejecutarla.
+- `COMPOSIO_MANAGE_CONNECTIONS`: conectar la cuenta de LinkedIn (da un enlace para autorizar).
+
+**Composio y el navegador no comparten sesión.** Composio usa la API de LinkedIn con un token OAuth; el navegador usa cookies. Son dos llaves distintas para la misma casa: conectar una no te da la otra.
+
+**Qué se usa de Composio.** Solo leer el perfil (`LINKEDIN_GET_MY_INFO`). Para publicar, el navegador (ver arriba). Si `cargar_herramientas_mcp` falla (sin internet, clave mala...), imprime el error y devuelve una lista vacía: el agente arranca igual, sin Composio.
+
+## Voz
+
+- **Oído** (`voz/oido.py`): `faster-whisper` (modelo `small`, en CPU) transcribe lo que dices.
+- **Boca** (`voz/boca.py`): **Piper** con la voz `es_ES-davefx-medium` convierte la respuesta en audio. `sintetizar_wav` la devuelve como WAV para reproducirla en el navegador.
+- **En la app**: la caja del chat tiene un botón de micrófono (`accept_audio=True`). Si hablas, te contesta hablando. En la barra lateral se puede activar que lea también las respuestas escritas.
+- **`voz/conversacion.py`**: prueba por terminal: escucha 5 segundos, se lo pasa al agente y escribe la respuesta.
 
 ## Gmail multiusuario
 
@@ -90,8 +177,8 @@ Si el usuario no ha conectado Gmail, las credenciales llegan como `None` y `gmai
 
 MCP es un protocolo estándar para que una aplicación de IA use herramientas que ofrece **otro programa** (como el USB: el servidor se hace una vez y cualquier app que hable MCP puede usarlo).
 
-- **`servidor_mcp.py`**: servidor MCP con `FastMCP`, por `stdio`. Ofrece `fecha_hora`.
-- **`conexion_mcp.py`**: cliente con `MultiServerMCPClient` (`langchain-mcp-adapters`). Arranca el servidor como otro proceso y carga sus herramientas.
+- **`servidor_mcp.py`**: servidor MCP propio con `FastMCP`, por `stdio`. Ofrece `fecha_hora`.
+- **`conexion_mcp.py`**: cliente con `MultiServerMCPClient` (`langchain-mcp-adapters`) con dos servidores: el propio (`prueba`, por `stdio`, arrancado con `sys.executable`) y **Composio** (remoto, por `streamable_http`). Ahora el agente solo carga las herramientas de Composio.
 - **`agente_grafo.py`**: añade las herramientas MCP a `funciones` y guarda sus nombres en `nombres_mcp` para llamarlas en asíncrono.
 
 Las herramientas de Gmail **empezaron en el servidor MCP**, pero se sacaron de ahí. Ver *Gmail fuera del MCP* en las decisiones de diseño.
@@ -99,17 +186,19 @@ Las herramientas de Gmail **empezaron en el servidor MCP**, pero se sacaron de a
 ## Tecnologías
 
 - **Python** + **LangGraph** (`StateGraph`, `MessagesState`, `SqliteSaver` para la memoria)
-- **Streamlit** para la interfaz de chat
+- **Streamlit** para la interfaz de chat (con micrófono)
 - **LangChain**: `ChatOllama`, `@tool`, `RecursiveCharacterTextSplitter`
 - **Ollama** en local: `qwen3` (modelo con herramientas) y `bge-m3` (embeddings)
 - **ChromaDB** como base de datos vectorial para el RAG
 - **ddgs** (búsqueda), **requests** + **BeautifulSoup** (páginas web), **pypdf** y **python-docx** (documentos)
+- **Playwright** (API síncrona) con el Chrome instalado, para el navegador
 - **Gmail API** (`google-api-python-client`) + **OAuth 2.0** (`google-auth-oauthlib`, flujo web con PKCE)
-- **MCP**: `mcp` (FastMCP) y `langchain-mcp-adapters`
+- **MCP**: `mcp` (FastMCP), `langchain-mcp-adapters` y **Composio**
+- **Voz**: `faster-whisper` (oír) y `piper-tts` (hablar)
 
 ## Instalación
 
-Necesitas Python 3.10+ y [Ollama](https://ollama.com) instalado. Para la parte de Gmail, además, un proyecto en Google Cloud (ver [Configurar Gmail](#configurar-gmail)).
+Necesitas Python 3.10+, [Ollama](https://ollama.com) y **Google Chrome** instalados. Para Gmail, además, un proyecto en Google Cloud (ver [Configurar Gmail](#configurar-gmail)); para LinkedIn por API, una cuenta de Composio (ver [Configurar Composio](#configurar-composio)).
 
 ```bash
 # 1. Descargar los modelos
@@ -125,6 +214,10 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+El navegador usa el **Chrome que ya tienes instalado** (`channel="chrome"`), así que no hace falta `playwright install`.
+
+Para la voz, descarga `es_ES-davefx-medium.onnx` y su `.onnx.json` de las [voces de Piper](https://huggingface.co/rhasspy/piper-voices) y ponlos en `voz/voces/` (no se suben a git porque pesan mucho).
+
 Se abre en `http://localhost:8501`. Es un chat **con memoria**: el agente recuerda lo hablado en la conversación. Mientras trabaja se ve qué herramientas va usando, y cada respuesta guarda en un desplegable las herramientas que usó. En la barra lateral puedes empezar una conversación nueva, **conectar o desconectar tu Gmail** y subir documentos a `datos/documentos/` para que los lea o los resuma.
 
 Ejemplos de lo que le puedes pedir:
@@ -133,6 +226,9 @@ Ejemplos de lo que le puedes pedir:
 - *"¿Cuáles son los principios del Zen de Python? Míralo en https://es.wikipedia.org/wiki/Python"*
 - *"Resúmeme el documento el-largo-viaje.pdf"* (el archivo tiene que estar en `datos/documentos/`)
 - *"¿Qué correos me han llegado hoy?"* o *"Resúmeme el último correo de LinkedIn"* (con Gmail conectado)
+- *"Prepárame una publicación en LinkedIn sobre lo que he aprendido creando un agente de IA. No la publiques, déjala escrita para que la revise"*
+
+**Antes de volver a arrancar:** para Streamlit con `Ctrl+C` y **cierra la ventana de Chrome del agente**. El perfil `datos/user_data_dir/` solo lo puede usar un Chrome a la vez. Los cambios en las instrucciones (`agente_grafo.py`) solo se notan al reiniciar Streamlit y conviene probarlos en una **conversación nueva**: si no, el modelo copia lo que hizo antes en el historial.
 
 ### Configurar Gmail
 
@@ -150,7 +246,22 @@ redirect_uri = "http://localhost:8501"
 
 Al desplegar en la nube, se añade la URL pública como otra URI de redirección y se pega lo mismo en los *Secrets* del servicio.
 
-También se puede probar `resumir_documento` sola, sin el agente, ejecutando `python -m agente.herramientas` desde la carpeta raíz (el bloque `if __name__ == "__main__"` resume un documento de ejemplo).
+### Configurar Composio
+
+Crea un archivo `.env` en la raíz (no se sube a git) con:
+
+```
+COMPOSIO_API_KEY=...
+COMPOSIO_MCP_URL=...
+```
+
+Después conecta tu LinkedIn una vez: `python -m mcp_local.conexion_mcp conectar` te da un enlace para autorizar. Con `python -m mcp_local.conexion_mcp conexiones` compruebas que ha funcionado.
+
+**Nunca pegues la clave en un chat, en el código ni en un commit.** Si se te escapa, revócala en el panel de Composio y crea otra.
+
+### Iniciar sesión en LinkedIn (navegador)
+
+La primera vez, pídele algo de LinkedIn al agente: abrirá la página de login y **esperará hasta 2 minutos a que entres tú a mano** en la ventana de Chrome. La sesión queda guardada en `datos/user_data_dir/` para las siguientes veces.
 
 ## Decisiones de diseño y problemas resueltos
 
@@ -170,11 +281,13 @@ También se puede probar `resumir_documento` sola, sin el agente, ejecutando `py
 
 Resultado: copia los 19 principios igual que en la fuente y solo dice que ha guardado el informe cuando es verdad.
 
+**Recetas paso a paso para un modelo pequeño.** `qwen3` (8B) sigue mucho mejor una receta numerada con nombres exactos ("clicar en *Crear publicación*", "el DIV *Comparte tus ideas…*") que una regla general. Y si tiene dos recetas para lo mismo, elige la que más se parece a la petición: por eso, para que no publique por Composio, no bastaba con decirlo; hubo que **quitar** la receta.
+
 **Informe solo si se pide.** El agente guarda informes únicamente cuando el usuario lo pide, para no llenar la carpeta con archivos que nadie quería.
 
 **Tamaño de los trozos al resumir (que quepa el resumen final).** Al principio usé trozos de 12.000 caracteres y resúmenes de 250 palabras. Con un libro de unos 470.000 caracteres salían **39 trozos**, y en el reduce, 39 × 250 palabras son unos 14.000 tokens, que no caben en `num_ctx=16384` junto a las instrucciones y la respuesta. Ollama no avisa: recorta el principio sin decir nada. Con trozos de **20.000 caracteres** y **150 palabras** por resumen salen unos 24 trozos y unos 5.000 tokens en el reduce, con margen de sobra y menos llamadas al modelo.
 
-**Errores con un inicio común.** Todos los errores de `cargar_texto` y `extraer_texto_archivo` empiezan por *"Ha habido un error"*, igual que los de `descargar_pagina`. Así la herramienta lo comprueba con un solo `startswith` y devuelve el error tal cual al modelo, por ejemplo con la lista de archivos disponibles, en vez de resumir un mensaje de error.
+**Errores con un inicio común.** Todos los errores de las herramientas empiezan por *"Ha habido un error"*. Así se comprueban con un solo `startswith` y el modelo los reconoce y se los explica al usuario, en vez de tratarlos como un resultado normal.
 
 **Límite de pasos (`recursion_limit = 40`).** Una investigación normal (buscar y leer 2-3 páginas) son unos 9 pasos del grafo. El límite deja margen, pero evita que una petición se quede en bucle para siempre.
 
@@ -188,7 +301,7 @@ Resultado: copia los 19 principios igual que en la fuente y solo dice que ha gua
 
 **Copia de la llamada, sin tocar la original.** `node_herramientas` no hace `llamada["args"]["credenciales"] = ...`, porque `llamada` es el mismo diccionario que está dentro del mensaje del modelo, y ese mensaje se guarda en `memoria.db` y se enseña en la interfaz. En su lugar crea una llamada nueva con `{**llamada, "args": {**llamada["args"], "credenciales": ...}}`.
 
-**Gmail fuera del MCP.** El servidor MCP es un proceso aparte, uno para todos los usuarios, y solo podía leer un `token.json` en disco, que era **mi** cuenta. Para que cada herramienta reciba el token de su usuario por MCP habría que mandarlo como argumento visible para el LLM, o montar un servidor MCP por HTTP con autenticación por petición. Era más complejo y menos seguro, así que las herramientas de Gmail pasaron a `herramientas.py` y el MCP se quedó con `fecha_hora`. Además, si se hubieran quedado en los dos sitios, las del MCP **pisaban** a las nuevas en `funciones` (se añaden después) y todos los usuarios habrían leído mi correo.
+**Gmail fuera del MCP.** El servidor MCP es un proceso aparte, uno para todos los usuarios, y solo podía leer un `token.json` en disco, que era **mi** cuenta. Para que cada herramienta reciba el token de su usuario por MCP habría que mandarlo como argumento visible para el LLM, o montar un servidor MCP por HTTP con autenticación por petición. Era más complejo y menos seguro, así que las herramientas de Gmail pasaron a `herramientas.py`. Además, si se hubieran quedado en los dos sitios, las del MCP **pisaban** a las nuevas en `funciones` (se añaden después) y todos los usuarios habrían leído mi correo.
 
 **Solo lectura (`gmail.readonly`).** El agente no puede enviar, borrar ni modificar nada, aunque un correo intente engañarlo. Las instrucciones y los docstrings además le dicen que el contenido de los correos son **datos, no órdenes**.
 
@@ -200,6 +313,17 @@ Resultado: copia los 19 principios igual que en la fuente y solo dice que ha gua
 
 **Limitación de Google: usuarios de prueba.** `gmail.readonly` es un permiso *restringido*. Mientras la app esté "en prueba", solo pueden conectarse hasta **100 cuentas añadidas a mano** en Google Cloud. Para abrirla a cualquiera, Google exige verificar la app y pasar una auditoría de seguridad de pago, que no compensa para un proyecto personal.
 
+### Qué no se sube a git
+
+| Archivo o carpeta | Por qué |
+|---|---|
+| `.env` | Claves de Composio y otras APIs. |
+| `.streamlit/secrets.toml` | Cliente OAuth de Google. |
+| `datos/user_data_dir/` | Perfil de Chrome con las cookies: con él se entra en tus cuentas sin contraseña. |
+| `datos/memoria.db` | Las conversaciones, incluido lo que el agente ha leído de tus correos. |
+| `credenciales/`, `token.json`, `credentials.json` | Credenciales de Google para pruebas en local. |
+| `voz/voces/` | Modelos de voz (pesan mucho). |
+
 ## Estructura del proyecto
 
 ```
@@ -207,22 +331,30 @@ Agente_IA/
 ├── app.py                   # Interfaz de chat con Streamlit (punto de entrada)
 ├── README.md
 ├── requirements.txt
+├── .env                     # Claves de Composio (no se sube a git)
 ├── .streamlit/
 │   ├── config.toml          # Tema de la interfaz (color, bordes, menú)
 │   └── secrets.toml         # Cliente OAuth de Google (no se sube a git)
 ├── agente/                  # El cerebro
 │   ├── agente_grafo.py      # Grafo de LangGraph: nodos, instrucciones, memoria
-│   └── herramientas.py      # Herramientas del agente (incluidas las @tool de Gmail)
+│   └── herramientas.py      # Herramientas @tool del agente (Gmail y navegador incluidos)
 ├── integraciones/           # Servicios externos
 │   ├── auth_gmail.py        # Inicio de sesión con Google: cada usuario conecta su Gmail
-│   └── gmail.py             # Lógica de Gmail: buscar, leer y sacar el texto de los correos
+│   ├── gmail.py             # Lógica de Gmail: buscar, leer y sacar el texto de los correos
+│   └── navegador.py         # Playwright: hilo encargado, leer, listar, clicar, escribir, login manual
 ├── mcp_local/               # MCP (no se llama "mcp" para no tapar la librería mcp)
-│   ├── servidor_mcp.py      # Servidor MCP (fecha_hora)
-│   └── conexion_mcp.py      # Cliente MCP que carga sus herramientas en el agente
+│   ├── servidor_mcp.py      # Servidor MCP propio (fecha_hora)
+│   └── conexion_mcp.py      # Cliente MCP: servidor propio + Composio
+├── voz/
+│   ├── oido.py              # Whisper: de voz a texto
+│   ├── boca.py              # Piper: de texto a voz
+│   ├── conversacion.py      # Prueba por terminal: hablar con el agente
+│   └── voces/               # Modelo de voz de Piper (no se sube a git)
 ├── datos/                   # Lo que usa y genera el agente (no es código)
 │   ├── documentos/          # Pon aquí los documentos que quieras que lea
 │   ├── informes/            # Aquí se guardan los informes generados
-│   └── memoria.db           # Memoria de las conversaciones (no se sube a git)
+│   ├── memoria.db           # Memoria de las conversaciones (no se sube a git)
+│   └── user_data_dir/       # Perfil de Chrome con tus sesiones (no se sube a git)
 ├── credenciales/            # token.json y credentials.json para probar en local (no se sube a git)
 └── versiones_anteriores/
     ├── agente.py            # v1: bucle a mano con la librería ollama
@@ -232,9 +364,11 @@ Agente_IA/
 Todo se ejecuta **desde la carpeta raíz**. Para probar un archivo suelto (su bloque `if __name__ == "__main__"`), se usa `-m` con la ruta de paquete, para que los imports entre carpetas funcionen:
 
 ```bash
-python -m agente.herramientas      # prueba resumir_documento
-python -m integraciones.gmail      # prueba la conexión con tu Gmail
-python -m mcp_local.conexion_mcp   # lista las herramientas del servidor MCP
+python -m agente.herramientas            # prueba resumir_documento
+python -m integraciones.gmail            # prueba la conexión con tu Gmail
+python -m integraciones.navegador        # pruebas del navegador en the-internet.herokuapp.com
+python -m mcp_local.conexion_mcp buscar  # pruebas de Composio (también: conexiones, conectar)
+python -m voz.conversacion               # hablar con el agente por el micrófono
 ```
 
 ### Evolución
@@ -248,6 +382,10 @@ python -m mcp_local.conexion_mcp   # lista las herramientas del servidor MCP
 7. **MCP**: servidor propio (`servidor_mcp.py`) y cliente (`conexion_mcp.py`) conectados al grafo.
 8. **Gmail con una sola cuenta**: `listar_correos` y `leer_correo` en el servidor MCP, con un `token.json` local.
 9. **Gmail multiusuario**: login de Google en la app (`auth_gmail.py`), herramientas de Gmail fuera del MCP y credenciales de cada usuario inyectadas en el grafo.
+10. **Voz**: oído con Whisper, boca con Piper y micrófono en la app.
+11. **Navegador**: Playwright para abrir páginas, listar elementos, clicar y escribir; hilo encargado para que funcione con Streamlit.
+12. **Sesiones**: perfil persistente de Chrome e inicio de sesión manual (el agente nunca toca contraseñas).
+13. **Composio y LinkedIn**: MCP remoto para leer el perfil; las publicaciones se preparan en el navegador, a la vista, y las publica el usuario.
 
 Las versiones anteriores se pueden ejecutar desde la carpeta raíz con:
 
@@ -262,15 +400,23 @@ python -m versiones_anteriores.agente1
 - [x] Que `leer_documento` use `cargar_texto` en vez de repetir el mismo código
 - [x] Que los pinches (`cargar_texto`, `descargar_pagina`) lancen excepciones con `raise` en vez de devolver texto de error
 - [x] Límite de pasos (`recursion_limit`) para que el agente no se quede en bucle
-- [x] Añadir `resumir_documento` y `leer_documento` a las instrucciones del agente (todavía no las nombran)
+- [x] Añadir `resumir_documento` y `leer_documento` a las instrucciones del agente
 - [ ] Recortar el historial de la memoria cuando crezca mucho
 - [x] Interfaz web con Streamlit
 - [x] Servidor MCP propio conectado al agente
 - [x] Gmail multiusuario (cada persona conecta su cuenta)
+- [x] Voz: hablarle por el micrófono y que conteste hablando
+- [x] Navegador con Playwright (leer, listar, clicar, escribir) y sesión persistente con login manual
+- [x] Preparar publicaciones de LinkedIn en el navegador sin publicarlas
+- [ ] Que el puntero se vea también encima de las ventanas emergentes (`<dialog>` va en la *top layer*) y que se mueva al escribir
+- [ ] Avisar al modelo en `listar_elementos` cuando hay una ventana emergente abierta y solo se listan sus elementos
+- [ ] Bloquear en código (en `node_herramientas` o en `clicar`) lo que hoy solo prohíben las instrucciones: publicar por Composio, clicar en campos de texto
+- [ ] Pulir `iniciar_sesion_manual` (mensaje cuando ya había sesión, constante para el tiempo de espera)
+- [ ] Volver a cargar `fecha_hora` del servidor MCP propio junto a Composio
 - [ ] Preparar correos: crear **borradores** en Gmail (el agente nunca envía; el usuario revisa y envía)
 - [ ] Enviar correos con **aprobación humana** (`interrupt` de LangGraph)
 - [ ] Desplegar en la nube gratis (Streamlit Community Cloud + un LLM por API, porque allí no hay GPU para Ollama)
 - [ ] `fecha_hora` con la zona horaria de España, y que "DATOS DE HOY" no se quede congelado al arrancar
 - [ ] Quitar `leer_documento` y `guardar_informe` en la versión pública (un correo malicioso no debe poder leer ni escribir archivos)
-- [ ] Ruta del MCP que funcione en Linux (`conexion_mcp.py` usa `.venv/Scripts/python.exe`)
+- [x] Ruta del MCP que funcione en Linux (`conexion_mcp.py` usa `sys.executable`)
 - [ ] Tests de las herramientas

@@ -465,6 +465,9 @@ def listar_elementos():
 def clicar(numero: int):
     """
     Hace clic en un elemento de la página actual (enlace, botón, casilla...).
+    NO la uses en campos de texto (INPUT, TEXTAREA o DIV editable) para poder
+    escribir en ellos: para eso usa directamente escribir, que ya pone el
+    cursor en el campo. Si el editor ya está abierto, no hace falta clicar.
     Devuelve la URL en la que estás después del clic y la lista NUEVA de
     elementos de esa página, con sus números ya actualizados.
 
@@ -485,6 +488,10 @@ def escribir(numero:int, texto:str):
     Escribe un texto en un campo de la página actual (cuadro de texto, buscador,
     formulario...). Borra lo que hubiera antes en el campo. NO envía el
     formulario: para enviarlo, después haz clic en su botón con clicar.
+
+    NO hace falta hacer clic en el campo antes de escribir: esta herramienta
+    pone el cursor en él sola. Aunque el campo ya esté seleccionado (con el
+    cursor dentro), llama directamente a escribir con su número.
 
     Parámetros:
     - numero: el número entre corchetes de un elemento INPUT, TEXTAREA o DIV

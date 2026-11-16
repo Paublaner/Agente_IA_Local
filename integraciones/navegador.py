@@ -17,6 +17,31 @@ ELEMENTOS = []
 DATA = str(Path(__file__).resolve().parent.parent / "datos" / "user_data_dir")
 ESPERA_LOGIN = 120000
 HILO = None
+SCRIPT_PUNTERO = """
+window.addEventListener('DOMContentLoaded', () => {
+    const pointer = document.createElement('div');
+    pointer.style.position = 'fixed';
+    pointer.style.width = '24px';
+    pointer.style.height = '24px';
+    pointer.style.pointerEvents = 'none';
+    pointer.style.zIndex = '999999';
+    // Flecha como la de Windows: blanca con borde negro. La PUNTA está en (0,0),
+    // la esquina de arriba a la izquierda, así que no hace falta centrarla con translate.
+    pointer.innerHTML = `
+        <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="1,1 1,19 6,14 9.5,21.5 12.5,20 9,13 16,13"
+                     fill="white" stroke="black" stroke-width="1.5" stroke-linejoin="round"/>
+        </svg>`;
+    document.body.appendChild(pointer);
+
+    document.addEventListener('mousemove', (e) => {
+        pointer.style.left = `${e.clientX}px`;
+        pointer.style.top = `${e.clientY}px`;
+    });
+});
+"""
+
+
 
 def encargado():
     while True:
@@ -62,6 +87,8 @@ def obtener_pagina():
 
         PAGINA = paginas[0]
 
+        NAVEGADOR.add_init_script(SCRIPT_PUNTERO)
+
     return PAGINA
     
 
@@ -75,6 +102,9 @@ def leer_pagina(url: str):
         pagina = obtener_pagina()
 
         pagina.goto(url, timeout=ESPERA_MAXIMA)
+
+        pagina.mouse.move(400, 300, steps=20)
+
         texto = pagina.inner_text("body")
 
     except PlaywrightTimeoutError:
@@ -123,15 +153,31 @@ def nombre_elemento(el):
     atributo_place_holder = el.get_attribute("placeholder")
     atributo_name = el.get_attribute("name")
 
-    return texto or atributo_aria_label or atributo_place_holder or atributo_name
+    atributo_data_placeholder = el.get_attribute("data-placeholder") or el.get_attribute("aria-placeholder")
+
+    placeholder_hijo = None
+    hijos = el.locator("[data-placeholder]")
+    if hijos.count() > 0: 
+        placeholder_hijo = hijos.first.get_attribute("data-placeholder")
+
+    return (texto or atributo_aria_label or atributo_place_holder or atributo_name
+            or atributo_data_placeholder or placeholder_hijo)
 
 
 def listar_elementos():
     global ELEMENTOS
     ELEMENTOS = []
     selector = 'a, button, input, select, textarea, [role="button"], [contenteditable="true"], [role="textbox"]'
+    selector_dialogo = 'dialog[open], [role="dialog"]'
     pagina = obtener_pagina()
     elementos = pagina.locator(selector)
+    dialogos = pagina.locator(selector_dialogo).filter(visible=True)
+
+    if dialogos.count() > 0:
+        zona = dialogos.last
+
+        elementos = zona.locator(selector)
+
     lineas = []
 
     for el in elementos.all():
@@ -147,8 +193,12 @@ def listar_elementos():
             lineas.append(f"[{numero}]  {etiqueta}  {nombre}")
 
     return "\n".join(lineas)
-            
+
+
+
 def clicar(numero: int):
+    selector = '[contenteditable="true"]'
+
     if numero < 1 or numero > len(ELEMENTOS):
         return f"Ha habido un error: no existe el elemento {numero}. Usa listar_elementos para ver los números disponibles."
 
@@ -166,7 +216,14 @@ def clicar(numero: int):
         primera_linea = str(e).splitlines()[0]
         return f'Ha habido un error al clicar en [{numero}] "{nombre}": {primera_linea}'
 
+    try:
+        pagina.wait_for_selector(selector, timeout=3000)
+
+    except PlaywrightTimeoutError:
+        pass
+
     return f'He clicado en [{numero}] "{nombre}". Ahora estás en {pagina.url}\n\nElementos de la página actual:\n{listar_elementos()}'
+
 
 
 def escribir(numero: int, texto: str):
@@ -190,12 +247,19 @@ def escribir(numero: int, texto: str):
     return f'Se ha introducido el texto en [{numero}] "{nombre}"'
 
 
+
 def iniciar_sesion_manual(url: str):
 
     try:
         pagina = obtener_pagina()
         pagina.goto(url, timeout=ESPERA_MAXIMA)
-        pagina.wait_for_selector("input[type=password]", state="visible", timeout=ESPERA_LOGIN)
+
+        try:
+            pagina.wait_for_selector("input[type=password]", state="visible", timeout=3000)
+
+        except PlaywrightTimeoutError:
+            return f"Ya se ha iniciado sesion antes continua con la consulta"
+
         pagina.wait_for_selector("input[type=password]", state="hidden", timeout=ESPERA_LOGIN)
         pagina.wait_for_load_state(timeout=ESPERA_MAXIMA)
         siguiente_url = pagina.url
@@ -205,6 +269,7 @@ def iniciar_sesion_manual(url: str):
     except PlaywrightError as e:
         primera_linea = str(e).splitlines()[0]
         return f"Ha habido un error al iniciar sesion en la URL: {url} con el siguiente error de codigo: {primera_linea}"
+
 
     return f"Se ha iniciado sesion correctamente y se ha pasado a la siguiente URL: {siguiente_url}"
 
