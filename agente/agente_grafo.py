@@ -4,13 +4,15 @@ import locale
 import datetime
 from langchain_ollama import ChatOllama
 from langgraph.graph import MessagesState, StateGraph, END, START
-import sqlite3
+from langgraph.checkpoint.postgres import PostgresSaver
 from pathlib import Path
-from langgraph.checkpoint.sqlite import SqliteSaver
 from mcp_local.conexion_mcp import cargar_herramientas_mcp
 import asyncio
 from langgraph.runtime import Runtime
 from agente.instrucciones import instrucciones
+import psycopg
+from psycopg.rows import dict_row
+
 
 try:
     locale.setlocale(locale.LC_TIME, "es_ES.UTF-8")
@@ -94,18 +96,21 @@ def decidir(state: MessagesState):
     return END
 
 RAIZ = Path(__file__).resolve().parents[1]  # carpeta del proyecto (agente_grafo.py está en agente/)
-conexion = sqlite3.connect(RAIZ / "datos" / "memoria.db", check_same_thread=False)
 
-memory = SqliteSaver(conexion)
+
+conexion = psycopg.connect("postgresql://agente:agente@localhost:5433/agente", autocommit=True, row_factory=dict_row)
+
+memory = PostgresSaver(conexion)
+
+memory.setup()
 
 conexion.execute("""
     CREATE TABLE IF NOT EXISTS conversaciones (
         hilo   TEXT PRIMARY KEY,
         titulo TEXT NOT NULL,
-        creada TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        creada TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
 """)
-conexion.commit()
 
 
 workflow = StateGraph(MessagesState)
@@ -139,21 +144,30 @@ def conversacion(hilo: str):
 
 def guardar_conversacion(hilo, titulo):
     conexion.execute(
-    "INSERT OR IGNORE INTO conversaciones (hilo,titulo) VALUES (?, ?)",
+    "INSERT INTO conversaciones (hilo, titulo) VALUES (%s, %s) ON CONFLICT (hilo) DO NOTHING",
     (hilo, titulo)
     )
 
-    conexion.commit()
+
 
 def listar_conversaciones():
     cursor = conexion.execute("SELECT hilo, titulo FROM conversaciones ORDER BY creada DESC")
-    return cursor.fetchall()
+    conversaciones = cursor.fetchall()
+
+    lista_tuplas = []
+
+    for fila in conversaciones:
+        tupla = (fila["hilo"], fila["titulo"])
+        lista_tuplas.append(tupla)
+
+    return lista_tuplas
+
 
 def eliminar_conversacion(hilo):
-    conexion.execute("DELETE FROM conversaciones WHERE hilo = ?",
+    conexion.execute("DELETE FROM conversaciones WHERE hilo = %s",
                      (hilo,))
     memory.delete_thread(thread_id=hilo)
-    conexion.commit()
+
 
 
 def ejecutar_grafo (credenciales, pregunta: str, hilo: str):
