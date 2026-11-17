@@ -1,0 +1,217 @@
+/*
+  Estilos de la interfaz que el tema de .streamlit/config.toml no alcanza.
+  Se engancha a los data-testid de Streamlit (1.67): si al actualizar Streamlit
+  algo deja de verse bien, lo primero es comprobar que esos nombres siguen igual.
+*/
+
+:root {
+  --fondo: #262624;
+  --superficie: #30302E;
+  --borde: #3D3D3A;
+  --texto: #F5F4EE;
+  --texto-suave: #A8A59B;
+  --acento: #E8835F;
+  --sombra: 0 6px 24px -8px rgba(0, 0, 0, 0.45), 0 2px 6px -2px rgba(0, 0, 0, 0.3);
+}
+
+/* ---------- Detalles del navegador ---------- */
+::selection { background: rgba(232, 131, 95, 0.32); color: var(--texto); }
+* { caret-color: var(--acento); }
+* { scrollbar-width: thin; scrollbar-color: #4A4945 transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #4A4945; border-radius: 10px; border: 3px solid var(--fondo); }
+::-webkit-scrollbar-track { background: transparent; }
+:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+
+/* ---------- Marco ---------- */
+[data-testid="stHeader"] { background: transparent; }
+[data-testid="stMainBlockContainer"] { max-width: 46rem; padding-top: 3rem; padding-bottom: 2rem; }
+[data-testid="stBottom"] > div,
+[data-testid="stBottomBlockContainer"] { background: var(--fondo); }
+[data-testid="stBottomBlockContainer"] { max-width: 46rem; padding-bottom: 1.5rem; }
+
+/* ---------- Mensajes ---------- */
+/* Sin avatares: el usuario va en una burbuja a la derecha y el agente ocupa la columna, sin caja */
+[data-testid^="stChatMessageAvatar"],
+[data-testid="stChatMessage"] > div[aria-hidden="true"] { display: none; }
+
+[data-testid="stChatMessage"] {
+  background: transparent;
+  padding: 0.25rem 0;
+  gap: 0;
+}
+
+[data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) {
+  width: fit-content;
+  max-width: 85%;
+  margin: 1.25rem 0 0.75rem auto;
+  padding: 0.65rem 1rem;
+  background: var(--superficie);
+  border-radius: 1.1rem;
+}
+[data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) p { margin: 0; }
+/* Streamlit le pone un margen negativo abajo al texto; dentro de la burbuja lo cortaría */
+[data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) [data-testid="stMarkdownContainer"] { margin-bottom: 0; }
+
+/* Respuestas del agente en serif, cómodas de leer (Streamlit pone la letra en cada p y li, así que van aquí) */
+[data-testid="stChatMessage"]:has([aria-label="Chat message from assistant"]) [data-testid="stChatMessageContent"] {
+  max-width: 68ch;
+}
+[aria-label="Chat message from assistant"] [data-testid="stMarkdownContainer"] :is(p, li, blockquote, td, th):not([data-testid="stExpander"] *) {
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: 1.075rem;
+  line-height: 1.7;
+}
+[data-testid="stChatMessage"]:has([aria-label="Chat message from assistant"]) [data-testid="stChatMessageContent"] code {
+  font-size: 0.85em;
+}
+
+/* Pasos de las herramientas: discretos, en la letra de la interfaz */
+[data-testid="stChatMessage"] [data-testid="stExpander"] {
+  font-family: "Hanken Grotesk", sans-serif;
+  font-size: 0.875rem;
+  margin-bottom: 0.75rem;
+}
+[data-testid="stChatMessage"] [data-testid="stExpander"] details {
+  border-color: var(--borde);
+  background: transparent;
+}
+[data-testid="stChatMessage"] [data-testid="stExpander"] summary { color: var(--texto-suave); }
+[data-testid="stChatMessage"] [data-testid="stExpander"] summary:hover { color: var(--texto); }
+[data-testid="stExpanderDetails"] p { margin-bottom: 0.35rem; }
+
+/* ---------- Caja del chat ---------- */
+[data-testid="stChatInput"] {
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: 1.25rem;
+  box-shadow: var(--sombra);
+  transition: border-color 160ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+[data-testid="stChatInput"]:focus-within {
+  border-color: #5A5852;
+  box-shadow: 0 8px 28px -8px rgba(0, 0, 0, 0.55), 0 2px 6px -2px rgba(0, 0, 0, 0.3);
+}
+[data-testid="stChatInput"] > div { background: transparent; border: none; }
+[data-testid="stChatInputTextArea"] { font-size: 1rem; }
+[data-testid="stChatInputTextArea"]::placeholder { color: #9E9B92; opacity: 1; }
+
+/* ---------- Pantalla de bienvenida ---------- */
+.bienvenida {
+  text-align: center;
+  margin: 14vh 0 2rem;
+  animation: aparecer 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.bienvenida h1 {
+  font-family: "Source Serif 4", Georgia, serif;
+  font-weight: 400;
+  font-size: clamp(2rem, 4.5vw, 2.6rem);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  text-wrap: balance;
+  padding: 0;
+  margin: 0 0 0.75rem;
+}
+.bienvenida p {
+  color: var(--texto-suave);
+  font-size: 1rem;
+  max-width: 34rem;
+  margin: 0 auto;
+  text-wrap: balance;
+}
+@keyframes aparecer {
+  from { opacity: 0; transform: translateY(8px); filter: blur(4px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bienvenida { animation: none; }
+}
+
+/* Sugerencias: botones secundarios de la zona principal, con aspecto de propuesta */
+[data-testid="stMainBlockContainer"] [data-testid="stBaseButton-secondary"] {
+  background: transparent;
+  border: 1px solid var(--borde);
+  color: var(--texto-suave);
+  min-height: 3.25rem;
+  padding: 0.6rem 0.9rem;
+  text-align: left;
+  justify-content: flex-start;
+  transition: background-color 160ms ease-out, color 160ms ease-out, border-color 160ms ease-out;
+}
+[data-testid="stMainBlockContainer"] [data-testid="stBaseButton-secondary"] p { font-size: 0.9rem; line-height: 1.35; }
+/* Streamlit corta el texto de los botones con "..."; aquí se deja en varias líneas para que se lea entero */
+[data-testid="stMainBlockContainer"] [data-testid="stBaseButton-secondary"] * {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+[data-testid="stMainBlockContainer"] [data-testid="stBaseButton-secondary"]:hover {
+  background: var(--superficie);
+  border-color: #4A4945;
+  color: var(--texto);
+}
+
+/* ---------- Barra lateral ---------- */
+[data-testid="stSidebarContent"] { padding-top: 0.5rem; }
+[data-testid="stSidebarUserContent"] h2 {
+  font-family: "Source Serif 4", Georgia, serif;
+  font-weight: 500;
+  font-size: 1.4rem;
+  letter-spacing: -0.01em;
+  padding-bottom: 0;
+}
+[data-testid="stSidebarUserContent"] h4 {
+  font-family: "Hanken Grotesk", sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--texto-suave);
+  padding: 0.25rem 0 0.25rem;
+}
+[data-testid="stSidebarUserContent"] hr { margin: 1.1rem 0; border-color: #34332F; }
+[data-testid="stSidebarUserContent"] [data-testid="stBaseButton-secondary"] { background: transparent; }
+
+/* ---------- Lista de conversaciones (barra lateral) ---------- */
+/* st.container(key="lista_conversaciones") le pone la clase .st-key-lista_conversaciones */
+.st-key-lista_conversaciones { gap: 0.1rem; }
+.st-key-lista_conversaciones [data-testid="stHorizontalBlock"] { gap: 0.25rem; }
+
+/* Títulos: una sola línea, alineados a la izquierda y cortados con "…" si no caben */
+.st-key-lista_conversaciones [data-testid="stColumn"]:first-child button {
+  justify-content: flex-start;
+  min-height: 2.1rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.5rem;
+  color: var(--texto-suave);
+  transition: background-color 140ms ease-out, color 140ms ease-out;
+}
+.st-key-lista_conversaciones [data-testid="stColumn"]:first-child button p {
+  font-size: 0.875rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+.st-key-lista_conversaciones [data-testid="stColumn"]:first-child button:hover {
+  background: #2A2927;
+  color: var(--texto);
+}
+/* La conversación abierta (botón "secondary"): fondo marcado y texto claro */
+.st-key-lista_conversaciones [data-testid="stColumn"]:first-child [data-testid="stBaseButton-secondary"] {
+  background: #2E2D2A;
+  border-color: transparent;
+  color: var(--texto);
+}
+
+/* Papelera: solo aparece al pasar el ratón por su fila (o al llegar con el teclado) */
+.st-key-lista_conversaciones [data-testid="stColumn"]:last-child button {
+  color: var(--texto-suave);
+  opacity: 0;
+  transition: opacity 140ms ease-out, color 140ms ease-out;
+}
+.st-key-lista_conversaciones [data-testid="stHorizontalBlock"]:hover [data-testid="stColumn"]:last-child button,
+.st-key-lista_conversaciones [data-testid="stColumn"]:last-child button:focus-visible { opacity: 1; }
+.st-key-lista_conversaciones [data-testid="stColumn"]:last-child button:hover { color: #F08A7A; }
+/* En pantallas táctiles no hay "pasar el ratón": la papelera se ve siempre */
+@media (hover: none) {
+  .st-key-lista_conversaciones [data-testid="stColumn"]:last-child button { opacity: 1; }
+}

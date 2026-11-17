@@ -98,6 +98,15 @@ conexion = sqlite3.connect(RAIZ / "datos" / "memoria.db", check_same_thread=Fals
 
 memory = SqliteSaver(conexion)
 
+conexion.execute("""
+    CREATE TABLE IF NOT EXISTS conversaciones (
+        hilo   TEXT PRIMARY KEY,
+        titulo TEXT NOT NULL,
+        creada TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+""")
+conexion.commit()
+
 
 workflow = StateGraph(MessagesState)
 
@@ -117,6 +126,35 @@ workflow.add_edge("node_herramientas", "node_modelo")
 app = workflow.compile() #Para la API: sin memoria, cada correo empieza de cero
 
 app_memoria = workflow.compile(checkpointer=memory) #Para el chat de Streamlit: recuerda la conversacion (cada chat tiene su thread_id)
+
+
+def conversacion(hilo: str):
+
+    config = {"configurable": {"thread_id": hilo}}
+
+    estado = app_memoria.get_state(config)
+
+    return estado.values.get("messages", [])
+
+
+def guardar_conversacion(hilo, titulo):
+    conexion.execute(
+    "INSERT OR IGNORE INTO conversaciones (hilo,titulo) VALUES (?, ?)",
+    (hilo, titulo)
+    )
+
+    conexion.commit()
+
+def listar_conversaciones():
+    cursor = conexion.execute("SELECT hilo, titulo FROM conversaciones ORDER BY creada DESC")
+    return cursor.fetchall()
+
+def eliminar_conversacion(hilo):
+    conexion.execute("DELETE FROM conversaciones WHERE hilo = ?",
+                     (hilo,))
+    memory.delete_thread(thread_id=hilo)
+    conexion.commit()
+
 
 def ejecutar_grafo (credenciales, pregunta: str, hilo: str):
     """

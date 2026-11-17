@@ -1,11 +1,32 @@
+# Tema cálido y tranquilo, inspirado en las interfaces de chat tipo Claude:
+# fondo grafito cálido (no negro puro), texto marfil y un acento terracota.
+# Los estilos que el tema no alcanza (burbujas, caja del chat...) están en estilos/interfaz.css
 [theme]
 base = "dark"
-backgroundColor = "#000000"
-secondaryBackgroundColor = "#1A1A1A"
-textColor = "#FAFAFA"
-primaryColor = "#6C5CE7"
-baseRadius = "large"
-font = "sans serif"
+backgroundColor = "#262624"
+secondaryBackgroundColor = "#30302E"
+textColor = "#F5F4EE"
+borderColor = "#3D3D3A"
+showWidgetBorder = true
+# Terracota oscuro: el blanco de los botones principales se lee bien encima (contraste 4.6:1)
+primaryColor = "#B85A3B"
+linkColor = "#E8835F"
+linkUnderline = false
+baseRadius = "0.75rem"
+buttonRadius = "0.6rem"
+baseFontSize = 15
+# Hanken Grotesk para la interfaz y Source Serif 4 para los títulos (y, por CSS, las respuestas del agente)
+font = "Hanken Grotesk:https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&display=swap, sans-serif"
+headingFont = "Source Serif 4:https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&display=swap, serif"
+codeFont = "JetBrains Mono:https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap, monospace"
+codeTextColor = "#E9C2AE"
+codeBackgroundColor = "#33312E"
+showSidebarBorder = false
+
+[theme.sidebar]
+backgroundColor = "#1F1E1D"
+secondaryBackgroundColor = "#2A2927"
+borderColor = "#34332F"
 
 [client]
 toolbarMode = "minimal"
