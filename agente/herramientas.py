@@ -15,14 +15,107 @@ from langchain_core.tools import InjectedToolArg
 from google.oauth2.credentials import Credentials
 from integraciones import gmail
 from integraciones import navegador
+from langchain_postgres import PGVector
+from agente.base_datos import URL_VECTOR, conexion
 
 
+embeddings = OllamaEmbeddings(model="bge-m3")
+
+vector = PGVector(embeddings=embeddings, collection_name="documentos", connection=URL_VECTOR)
 
 resumir = ChatOllama(
     model="qwen3",
     temperature=0,
     num_ctx= 16384
 )
+
+def documentos_indexados():
+
+    cursor = conexion.execute("SELECT DISTINCT cmetadata ->> 'fuente' AS fuente FROM langchain_pg_embedding")
+    fuentes = cursor.fetchall()
+
+    lista = []
+
+    for fila in fuentes:
+        lista.append(fila["fuente"])
+
+    return lista
+
+
+
+def indexar_documento(nombre:str) -> str:
+    texto = cargar_texto(nombre)
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1200,     # Número máximo de caracteres por fragmento
+        chunk_overlap=100,   # Caracteres que coge del documento anterior para no perder contexto del anterior
+        separators=["\n\n", "\n", " ", ""]
+    )
+    texto_limpio = re.sub(r"\s?(\w)-\n(\w)", r"\1\2", texto)
+
+    chunks = splitter.split_text(texto_limpio)
+
+    conexion.execute(
+        "DELETE FROM langchain_pg_embedding WHERE cmetadata ->> 'fuente' = %s",
+        (nombre,)
+    )
+
+    lista = [] 
+
+    for _ in chunks:
+        lista.append({"fuente": nombre})
+
+    vector.add_texts(chunks, metadatas=lista)
+
+    return f"El nombre del archivo es {nombre}, y se han guardado la siguiente cantidad de trozos: {len(chunks)}"
+
+@tool
+def buscar_en_documentos(pregunta:str, nombre:str | None= None) -> str:
+    """
+    Busca un dato concreto dentro de los documentos del usuario (sus PDF, Word, TXT o MD
+    ya indexados) y devuelve solo los fragmentos relacionados con la pregunta, indicando
+    de qué archivo sale cada uno.
+
+    Úsala cuando el usuario pregunte algo concreto sobre sus documentos, por ejemplo
+    "¿qué le pasa al patito en invierno?" o "¿qué dice mi contrato sobre las vacaciones?".
+    Para un resumen del documento entero usa resumir_documento; para leer un documento
+    corto completo usa leer_documento.
+
+    Responde usando SOLO lo que digan los fragmentos y cita el archivo de donde sale.
+    Si devuelve que la información no aparece, díselo al usuario y no la inventes.
+
+    Args:
+        pregunta: Lo que quiere saber el usuario, con sus palabras, por ejemplo "¿en qué se convierte el patito feo?"
+        nombre: Opcional. Nombre exacto del archivo si el usuario quiere buscar solo en uno, por ejemplo "patitofeo.pdf". Si no lo indica, déjalo vacío y se busca en todos.
+    """
+    lista = []
+
+    if nombre is None:
+        resultados = vector.similarity_search_with_score(pregunta, k=5, filter=None)
+    else:
+        resultados = vector.similarity_search_with_score(pregunta, k=5, filter={"fuente": nombre})
+
+    umbral = 0.5
+
+    salto_entre_resultados = "\n\n" + "="*40 + "\n\n"
+
+    for doc, score in resultados:
+        if score < umbral:
+            formato_resultado = (
+                f"Fuente: {doc.metadata['fuente']}\n"
+                f"Fragmento: {doc.page_content}"
+            )
+
+            lista.append(formato_resultado)
+
+    if lista == []:
+        return "La Informacion no aparece en el documento revisado"
+
+    return salto_entre_resultados.join(lista)
+
+    
+
+
 
 
 @tool
@@ -116,6 +209,7 @@ def extraer_texto_archivo(ruta: Path)-> str:
             raise RuntimeError("Ha habido un error los formatos que se aceptan son PDF, WORD, TXT y MD o MarkDown")
 
         salto_entre_resultados = "\n\n"
+        
         return salto_entre_resultados.join(paginas)
         
     except Exception as e:

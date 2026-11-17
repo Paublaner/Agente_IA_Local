@@ -224,6 +224,7 @@ memoria.db*
 datos/documentos/*
 !datos/documentos/.gitkeep
 datos/informes/Luc*.md
+agente/base_datos.py
 
 # Perfil del navegador (cookies y sesiones iniciadas, p. ej. LinkedIn)
 datos/user_data_dir/

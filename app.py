@@ -3,6 +3,8 @@ from pathlib import Path
 import streamlit as st
 from agente.agente_grafo import (ejecutar_grafo, conversacion, guardar_conversacion,
                                  listar_conversaciones, eliminar_conversacion)
+from agente.herramientas import indexar_documento
+from agente.base_datos import conexion
 from integraciones import auth_gmail
 from faster_whisper import decode_audio
 from voz.oido import transcribir   # el mismo oído que usa voz/conversacion.py
@@ -28,6 +30,7 @@ etiquetas = {
     "buscar_en_pagina":      ("manage_search", "Buscando en la página", "pregunta"),
     "leer_documento":        ("description", "Leyendo el documento", "nombre"),
     "resumir_documento":     ("summarize", "Resumiendo el documento (puede tardar)", "nombre"),
+    "buscar_en_documentos":  ("plagiarism", "Buscando en tus documentos", "pregunta"),
     "guardar_informe":       ("save", "Guardando el informe", "titulo"),
     "listar_correos":        ("mail", "Buscando en tu Gmail", "busqueda"),
     "leer_correo":           ("drafts", "Leyendo el correo", "id_correo"),
@@ -172,12 +175,34 @@ with st.sidebar:
 
     disponibles = sorted(archivo.name for archivo in carpeta_documentos.iterdir()
                          if archivo.is_file() and archivo.name != ".gitkeep")
+    # Qué archivos tienen ya sus trozos en Postgres (la "fuente" que guarda indexar_documento)
+    filas = conexion.execute("SELECT DISTINCT cmetadata ->> 'fuente' AS fuente FROM langchain_pg_embedding").fetchall()
+    indexados = {fila["fuente"] for fila in filas}
+
     if disponibles == []:
         st.caption("Todavía no hay documentos.")
     else:
         for nombre in disponibles:
-            st.markdown(f":material/description: `{nombre}`")
-        st.caption("Pídele: *Resúmeme el documento ...*")
+            columna_nombre, columna_boton = st.columns([6, 1], gap="small", vertical_alignment="center")
+            ya_indexado = nombre in indexados
+            icono_estado = ":material/check_circle:" if ya_indexado else ":material/description:"
+            columna_nombre.markdown(f"{icono_estado} `{nombre}`")
+
+            # Indexar = trocear + embeddings + guardar en Postgres. Si ya estaba, se reemplaza (no se duplica).
+            pulsado = columna_boton.button("", key=f"indexar_{nombre}", type="tertiary",
+                                           icon=":material/sync:" if ya_indexado else ":material/upload:",
+                                           help="Volver a indexar" if ya_indexado else "Indexar para poder preguntarle")
+            if pulsado:
+                try:
+                    with st.spinner(f"Indexando {nombre}…"):
+                        indexar_documento(nombre)
+                    st.toast(f"{nombre} indexado", icon=":material/check_circle:")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"No se ha podido indexar {nombre}: {e}")
+
+        st.caption("Pulsa :material/upload: para indexar un documento. Luego pregúntale: "
+                   "*¿Qué dice el documento sobre ...?* o *Resúmeme el documento ...*")
 
 
 # ---------- Conversación ----------

@@ -10,8 +10,7 @@ from mcp_local.conexion_mcp import cargar_herramientas_mcp
 import asyncio
 from langgraph.runtime import Runtime
 from agente.instrucciones import instrucciones
-import psycopg
-from psycopg.rows import dict_row
+from agente.base_datos import conexion_memoria, conexion
 
 
 try:
@@ -42,7 +41,8 @@ funciones ={
      "listar_elementos": herramientas.listar_elementos,
      "clicar": herramientas.clicar,
      "escribir": herramientas.escribir,
-     "iniciar_sesion_manual": herramientas.iniciar_sesion_manual
+     "iniciar_sesion_manual": herramientas.iniciar_sesion_manual,
+     "buscar_en_documentos": herramientas.buscar_en_documentos
 }
 
 funciones_gmail = [
@@ -60,7 +60,15 @@ llm_with_tools = llm.bind_tools(list(funciones.values()))
 
 def node_modelo (state: MessagesState):
     messages = state["messages"]
-    lista_nueva = [("system", instrucciones)] + messages
+    fuentes = herramientas.documentos_indexados()
+
+    if fuentes == []:
+        texto_fuentes = "DOCUMENTOS INDEXADOS DEL USUARIO: (ninguno)"
+
+    else:
+        texto_fuentes = f"DOCUMENTOS INDEXADOS DEL USUARIO: {', '.join(fuentes)}"
+
+    lista_nueva = [("system", instrucciones + texto_fuentes)] + messages
     resultado= llm_with_tools.invoke(lista_nueva)
     return {"messages": [resultado]}
 
@@ -95,12 +103,9 @@ def decidir(state: MessagesState):
         return "herramienta"
     return END
 
-RAIZ = Path(__file__).resolve().parents[1]  # carpeta del proyecto (agente_grafo.py está en agente/)
+RAIZ = Path(__file__).resolve().parents[1] 
 
-
-conexion = psycopg.connect("postgresql://agente:agente@localhost:5433/agente", autocommit=True, row_factory=dict_row)
-
-memory = PostgresSaver(conexion)
+memory = PostgresSaver(conexion_memoria)
 
 memory.setup()
 
