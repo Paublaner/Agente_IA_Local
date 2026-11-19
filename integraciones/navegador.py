@@ -3,6 +3,8 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from integraciones import gmail
 import atexit
+import os
+import re
 from pathlib import Path
 import queue
 import threading
@@ -81,7 +83,14 @@ def obtener_pagina():
 
         PLAYWRIGHT = sync_playwright().start()
         
-        NAVEGADOR = PLAYWRIGHT.chromium.launch_persistent_context(DATA, args= ["--disable-blink-features=AutomationControlled"], headless=False,channel="chrome")
+        # Solo para grabar vídeos de demo: si existe la variable de entorno GRABAR_NAVEGADOR,
+        # la ventana se graba en esa carpeta (el vídeo se guarda al cerrar el navegador). Si no, nada cambia.
+        grabacion = {}
+        if os.environ.get("GRABAR_NAVEGADOR"):
+            grabacion = {"record_video_dir": os.environ["GRABAR_NAVEGADOR"],
+                         "record_video_size": {"width": 1280, "height": 720}}
+
+        NAVEGADOR = PLAYWRIGHT.chromium.launch_persistent_context(DATA, args= ["--disable-blink-features=AutomationControlled"], headless=False,channel="chrome", **grabacion)
 
         paginas = NAVEGADOR.pages
 
@@ -204,6 +213,10 @@ def clicar(numero: int):
 
     el = ELEMENTOS[numero - 1]
     nombre = nombre_elemento(el)
+
+    # Solo durante las grabaciones de demo (GRABAR_NAVEGADOR): nunca pulsar botones que publican o envían
+    if os.environ.get("GRABAR_NAVEGADOR") and re.search(r"\b(publicar|post|enviar|send|compartir|share)\b", str(nombre), re.IGNORECASE):
+        return f'Bloqueado: [{numero}] "{nombre}" publica o envía, y eso lo hace el usuario. Deja el texto escrito y PARA.'
 
     try:
         el.click(timeout=ESPERA_MAXIMA)

@@ -5,13 +5,14 @@ import datetime
 from langchain_ollama import ChatOllama
 from langgraph.graph import MessagesState, StateGraph, END, START
 from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.types import interrupt, Command
 from pathlib import Path
 from mcp_local.conexion_mcp import cargar_herramientas_mcp
 import asyncio
 from langgraph.runtime import Runtime
 from agente.instrucciones import instrucciones
 from agente.base_datos import conexion_memoria, conexion
-
+from langchain_core.messages import ToolMessage
 
 try:
     locale.setlocale(locale.LC_TIME, "es_ES.UTF-8")
@@ -50,6 +51,13 @@ funciones_gmail = [
     "leer_correo"
 ]
 
+
+funciones_a_revisar = [
+    "clicar",
+    "escribir",
+    "COMPOSIO_MULTI_EXECUTE_TOOL"
+]
+
 herramientas_mcp = cargar_herramientas_mcp()
 nombres_mcp = {herramienta.name for herramienta in herramientas_mcp}
 
@@ -79,6 +87,20 @@ def node_herramientas(state: MessagesState,  runtime: Runtime):
     credenciales = runtime.context["credenciales_gmail"]
 
     for llamada in ultimo.tool_calls:
+
+        if llamada["name"] in funciones_a_revisar:
+            respuesta_humana = interrupt({"Funcion nombre": llamada["name"], "Argumentos": llamada["args"]})
+
+            if not respuesta_humana:
+                tool_msg = ToolMessage(
+                    content="el usuario ha rechazado la peticion, no lo reintentes, pregunta al usuario qué quiere cambiar",
+                    tool_call_id=llamada["id"],
+                    name=llamada["name"] 
+                )
+
+                resultado.append(tool_msg)
+
+                continue
 
         if llamada["name"] in funciones_gmail:
             llamada_args = llamada["args"]
@@ -184,7 +206,7 @@ def ejecutar_grafo (credenciales, pregunta: str, hilo: str):
     """
     config = {"configurable": {"thread_id": hilo}, "recursion_limit": 40}
 
-    for paso in app_memoria.stream({"messages": [pregunta]}, config, stream_mode="updates",  context={"credenciales_gmail": credenciales}):
+    for paso in app_memoria.stream({"messages": [pregunta]}, Command(resume= True),config, stream_mode="updates",  context={"credenciales_gmail": credenciales}):
         for nodo, cambios in paso.items():
             if nodo != "node_modelo":
                 continue
