@@ -197,7 +197,7 @@ def eliminar_conversacion(hilo):
 
 
 
-def ejecutar_grafo (credenciales, pregunta: str, hilo: str):
+def ejecutar_grafo (credenciales , pregunta: str, hilo: str, aprobacion = None):
     """
     Con memoria (para el chat de Streamlit).
     En vez de devolver solo el final, va devolviendo (yield) cada paso según ocurre:
@@ -206,7 +206,16 @@ def ejecutar_grafo (credenciales, pregunta: str, hilo: str):
     """
     config = {"configurable": {"thread_id": hilo}, "recursion_limit": 40}
 
-    for paso in app_memoria.stream({"messages": [pregunta]}, Command(resume= True),config, stream_mode="updates",  context={"credenciales_gmail": credenciales}):
+    if aprobacion is None:
+        mensajes = {"messages": [pregunta]}
+
+    else:
+        mensajes = Command(resume= aprobacion)
+
+    
+
+    for paso in app_memoria.stream(mensajes ,config, stream_mode="updates",  context={"credenciales_gmail": credenciales}):
+        print(paso)
         for nodo, cambios in paso.items():
             if nodo != "node_modelo":
                 continue

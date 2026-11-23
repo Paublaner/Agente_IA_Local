@@ -269,7 +269,8 @@ if pregunta:
 
         with st.status("Pensando...", expanded=True) as estado:
             try:
-                for tipo, dato in ejecutar_grafo(auth_gmail.credenciales_actuales(),pregunta, st.session_state.hilo):
+                for tipo, dato in ejecutar_grafo(auth_gmail.credenciales_actuales(), pregunta=pregunta,
+                                                 hilo=st.session_state.hilo, aprobacion=None):
                     if tipo == "herramienta":
                         paso = texto_paso(dato)
                         pasos.append(paso)
