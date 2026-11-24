@@ -104,6 +104,7 @@ def titulo_conversacion(pregunta, largo=40):
 def empezar_conversacion_nueva():
     st.session_state.hilo = str(uuid.uuid4())
     st.session_state.mensajes = []
+    st.session_state.pop("esperando_aprobacion", None)   # un permiso pendiente es de la conversación anterior
 
 
 # ---------- Barra lateral ----------
@@ -130,6 +131,7 @@ with st.sidebar:
                                          type="secondary" if abierta else "tertiary"):
                     st.session_state.hilo = hilo
                     st.session_state.mensajes = cargar_mensajes(hilo)
+                    st.session_state.pop("esperando_aprobacion", None)
                     st.rerun()
 
                 if columna_borrar.button("", icon=":material/delete:", key=f"borrar_{hilo}",
@@ -233,9 +235,96 @@ for rol, texto, pasos in st.session_state.mensajes:
 if "audio_respuesta" in st.session_state:
     st.audio(st.session_state.pop("audio_respuesta"), format="audio/wav", autoplay=True)
 
+# ---------- Aprobación humana (interrupt) ----------
+# Si el agente quiere usar una herramienta delicada (clicar, escribir, Composio), el grafo se para
+# y ejecutar_grafo devuelve ("aprobar", datos). Se guarda aquí hasta que pulses Aprobar o Rechazar.
+def guardar_decision(aprobado):
+    # on_click: Streamlit lo ejecuta ANTES de volver a pintar la página, así no hace falta st.rerun()
+    st.session_state.decision = aprobado
+
+
+esperando = "esperando_aprobacion" in st.session_state
+decidiendo = "decision" in st.session_state   # ya ha pulsado un botón: no se vuelve a pintar la tarjeta
+
+if esperando and not decidiendo:
+    pendiente_aprobar = st.session_state.esperando_aprobacion
+    with st.chat_message("assistant", avatar="🔎"):
+        for paso in pendiente_aprobar["pasos"]:
+            st.markdown(paso)
+        with st.container(border=True):
+            st.markdown(f":material/front_hand: **Quiero usar `{pendiente_aprobar['datos']['Funcion nombre']}`. ¿Me dejas?**")
+            st.json(pendiente_aprobar["datos"]["Argumentos"], expanded=True)
+            columna_si, columna_no = st.columns(2)
+            columna_si.button("Aprobar", icon=":material/check:", type="primary", width="stretch",
+                              on_click=guardar_decision, args=(True,))
+            columna_no.button("Rechazar", icon=":material/close:", width="stretch",
+                              on_click=guardar_decision, args=(False,))
+
+
+def ejecutar_turno(pregunta, aprobacion, pasos, por_voz):
+    """
+    Lanza el grafo (pregunta nueva o reanudar tras aprobar/rechazar) y pinta sus pasos.
+    Si se vuelve a parar para pedir permiso, lo guarda en esperando_aprobacion y no hay respuesta todavía.
+    """
+    respuesta = ""
+    pedir_permiso = None
+
+    with st.chat_message("assistant", avatar="🔎"):
+        with st.status("Pensando...", expanded=True) as estado:
+            for paso in pasos:
+                st.markdown(paso)
+            try:
+                for tipo, dato in ejecutar_grafo(auth_gmail.credenciales_actuales(), pregunta=pregunta,
+                                                 hilo=st.session_state.hilo, aprobacion=aprobacion):
+                    if tipo == "herramienta":
+                        paso = texto_paso(dato)
+                        pasos.append(paso)
+                        st.markdown(paso)
+                        estado.update(label=titulo_paso(dato))
+                    elif tipo == "aprobar":
+                        pedir_permiso = dato
+                    else:
+                        respuesta = dato
+
+                if pedir_permiso is not None:
+                    estado.update(label="Esperando tu permiso", state="complete", expanded=False)
+                else:
+                    estado.update(label=f"Listo · {len(pasos)} herramienta(s)", state="complete", expanded=False)
+
+            except Exception as e:
+                estado.update(label="Ha fallado", state="error")
+                respuesta = f"Ha habido un error: {e}"
+
+        if pedir_permiso is None:
+            st.markdown(respuesta)
+
+            if (por_voz or voz_siempre) and respuesta:
+                with st.spinner("Preparando la voz..."):
+                    try:
+                        st.session_state.audio_respuesta = sintetizar_wav(respuesta)
+                    except Exception as e:
+                        st.toast(f"No he podido generar la voz: {e}", icon="🔇")
+
+    # st.rerun() siempre FUERA de los with (chat_message, status...): dentro rompe la página en el navegador
+    if pedir_permiso is not None:
+        # El grafo está parado: se guarda todo para seguir cuando pulses un botón
+        st.session_state.esperando_aprobacion = {"datos": pedir_permiso, "pasos": pasos, "por_voz": por_voz}
+    else:
+        st.session_state.mensajes.append(("assistant", respuesta, pasos))
+    st.rerun()   # Para quitar la pantalla de bienvenida y pintarlo todo desde el historial
+
+
+# Ha pulsado Aprobar o Rechazar: se reanuda el grafo donde se quedó
+if "decision" in st.session_state:
+    decision = st.session_state.pop("decision")
+    pendiente_aprobar = st.session_state.pop("esperando_aprobacion")
+    ejecutar_turno(None, decision, pendiente_aprobar["pasos"], pendiente_aprobar["por_voz"])
+
 # accept_audio=True añade un botón de micrófono dentro de la caja del chat.
-# El navegador graba y Streamlit nos da el audio ya a 16 kHz (lo que quiere Whisper)
-entrada = st.chat_input("Escribe o pulsa el micrófono para hablar...", accept_audio=True)
+# El navegador graba y Streamlit nos da el audio ya a 16 kHz (lo que quiere Whisper).
+# Mientras espera tu permiso se desactiva: primero hay que aprobar o rechazar
+entrada = st.chat_input("Escribe o pulsa el micrófono para hablar..." if not esperando
+                        else "Aprueba o rechaza la acción para seguir", accept_audio=True, disabled=esperando)
 
 pregunta = None
 por_voz = False   # ¿ha hablado? Si es así, se le contesta hablando
@@ -255,7 +344,7 @@ if entrada is not None:
 if "pendiente" in st.session_state:
     pregunta = st.session_state.pop("pendiente")
 
-if pregunta:
+if pregunta and not esperando:
     # Primera pregunta de esta conversación: se apunta en la agenda para que salga en la barra lateral
     if st.session_state.mensajes == []:
         guardar_conversacion(st.session_state.hilo, titulo_conversacion(pregunta))
@@ -263,37 +352,6 @@ if pregunta:
     with st.chat_message("user", avatar="🧑"):
         st.markdown(pregunta)
 
-    with st.chat_message("assistant", avatar="🔎"):
-        respuesta = ""
-        pasos = []
-
-        with st.status("Pensando...", expanded=True) as estado:
-            try:
-                for tipo, dato in ejecutar_grafo(auth_gmail.credenciales_actuales(), pregunta=pregunta,
-                                                 hilo=st.session_state.hilo, aprobacion=None):
-                    if tipo == "herramienta":
-                        paso = texto_paso(dato)
-                        pasos.append(paso)
-                        st.markdown(paso)
-                        estado.update(label=titulo_paso(dato))
-                    else:
-                        respuesta = dato
-
-                estado.update(label=f"Listo · {len(pasos)} herramienta(s)", state="complete", expanded=False)
-
-            except Exception as e:
-                estado.update(label="Ha fallado", state="error")
-                respuesta = f"Ha habido un error: {e}"
-
-        st.markdown(respuesta)
-
-        if (por_voz or voz_siempre) and respuesta:
-            with st.spinner("Preparando la voz..."):
-                try:
-                    st.session_state.audio_respuesta = sintetizar_wav(respuesta)
-                except Exception as e:
-                    st.toast(f"No he podido generar la voz: {e}", icon="🔇")
-
+    # La pregunta se guarda ya: si el agente se para a pedir permiso, tiene que seguir en pantalla
     st.session_state.mensajes.append(("user", pregunta, []))
-    st.session_state.mensajes.append(("assistant", respuesta, pasos))
-    st.rerun()   # Para quitar la pantalla de bienvenida y pintarlo todo desde el historial
+    ejecutar_turno(pregunta, None, [], por_voz)

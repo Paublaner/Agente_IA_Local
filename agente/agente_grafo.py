@@ -212,11 +212,13 @@ def ejecutar_grafo (credenciales , pregunta: str, hilo: str, aprobacion = None):
     else:
         mensajes = Command(resume= aprobacion)
 
-    
 
     for paso in app_memoria.stream(mensajes ,config, stream_mode="updates",  context={"credenciales_gmail": credenciales}):
-        print(paso)
         for nodo, cambios in paso.items():
+            if nodo == "__interrupt__":
+                datos = cambios[0].value
+                yield("aprobar", datos)
+
             if nodo != "node_modelo":
                 continue
             for mensaje in cambios["messages"]:

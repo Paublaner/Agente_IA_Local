@@ -1,0 +1,148 @@
+- generic [ref=f3e2]:
+  - link "Skip to main content" [ref=f3e3] [cursor=pointer]:
+    - /url: "#stMain"
+  - region "Sidebar" [ref=f3e7]:
+    - generic [ref=f3e12]:
+      - heading "Agente IA" [level=2] [ref=f3e17]
+      - paragraph [ref=f3e22]: En local con Ollama · qwen3
+      - button [ref=f3e25] [cursor=pointer]:
+        - generic [ref=f3e27]:
+          - generic [aria-hidden] [ref=f3e29]: edit_square
+          - paragraph [ref=f3e32]: Nueva conversación
+      - heading "Conversaciones" [level=4] [ref=f3e37]
+      - generic [ref=f3e39]:
+        - generic [ref=f3e41]:
+          - button [ref=f3e46] [cursor=pointer]:
+            - generic "abre google.com y escribe hola en el…" [ref=f3e47]:
+              - paragraph [ref=f3e51]: abre google.com y escribe hola en el…
+          - button "delete icon" [ref=f3e59] [cursor=pointer]:
+            - generic [ref=f3e61]:
+              - generic [ref=f3e62]: delete icon
+              - generic [aria-hidden] [ref=f3e64]: delete
+        - generic [ref=f3e66]:
+          - button [ref=f3e71] [cursor=pointer]:
+            - generic "abre google.com y escribe hola en el…" [ref=f3e72]:
+              - paragraph [ref=f3e76]: abre google.com y escribe hola en el…
+          - button "delete icon" [ref=f3e84] [cursor=pointer]:
+            - generic [ref=f3e86]:
+              - generic [ref=f3e87]: delete icon
+              - generic [aria-hidden] [ref=f3e89]: delete
+        - generic [ref=f3e91]:
+          - button [ref=f3e96] [cursor=pointer]:
+            - generic "abre google.com y escribe hola en el…" [ref=f3e97]:
+              - paragraph [ref=f3e101]: abre google.com y escribe hola en el…
+          - button "delete icon" [ref=f3e109] [cursor=pointer]:
+            - generic [ref=f3e111]:
+              - generic [ref=f3e112]: delete icon
+              - generic [aria-hidden] [ref=f3e114]: delete
+        - generic [ref=f3e116]:
+          - button [ref=f3e121] [cursor=pointer]:
+            - generic "Abra la página https://example.com y…" [ref=f3e122]:
+              - paragraph [ref=f3e126]: Abra la página https://example.com y…
+          - button "delete icon" [ref=f3e134] [cursor=pointer]:
+            - generic [ref=f3e136]:
+              - generic [ref=f3e137]: delete icon
+              - generic [aria-hidden] [ref=f3e139]: delete
+        - generic [ref=f3e141]:
+          - button [ref=f3e146] [cursor=pointer]:
+            - generic "Abre la página https://example.com y…" [ref=f3e147]:
+              - paragraph [ref=f3e151]: Abre la página https://example.com y…
+          - button "delete icon" [ref=f3e159] [cursor=pointer]:
+            - generic [ref=f3e161]:
+              - generic [ref=f3e162]: delete icon
+              - generic [aria-hidden] [ref=f3e164]: delete
+        - generic [ref=f3e166]:
+          - button [ref=f3e171] [cursor=pointer]:
+            - generic "¿Qué dice El extranjero sobre los…" [ref=f3e172]:
+              - paragraph [ref=f3e176]: ¿Qué dice El extranjero sobre los…
+          - button "delete icon" [ref=f3e184] [cursor=pointer]:
+            - generic [ref=f3e186]:
+              - generic [ref=f3e187]: delete icon
+              - generic [aria-hidden] [ref=f3e189]: delete
+        - generic [ref=f3e191]:
+          - button [ref=f3e196] [cursor=pointer]:
+            - generic "¿Qué es LangGraph y para qué sirve?" [ref=f3e197]:
+              - paragraph [ref=f3e201]: ¿Qué es LangGraph y para qué sirve?
+          - button "delete icon" [ref=f3e209] [cursor=pointer]:
+            - generic [ref=f3e211]:
+              - generic [ref=f3e212]: delete icon
+              - generic [aria-hidden] [ref=f3e214]: delete
+        - generic [ref=f3e216]:
+          - button [ref=f3e221] [cursor=pointer]:
+            - generic "Investiga las últimas noticias sobre…" [ref=f3e222]:
+              - paragraph [ref=f3e226]: Investiga las últimas noticias sobre…
+          - button "delete icon" [ref=f3e234] [cursor=pointer]:
+            - generic [ref=f3e236]:
+              - generic [ref=f3e237]: delete icon
+              - generic [aria-hidden] [ref=f3e239]: delete
+      - separator [ref=f3e244]
+      - generic [ref=f3e247] [cursor=pointer]:
+        - switch "Leer en voz alta también las respuestas escritas" [ref=f3e249]
+        - paragraph [ref=f3e256]: Leer en voz alta también las respuestas escritas
+      - separator [ref=f3e261]
+      - heading "Tu Gmail" [level=4] [ref=f3e266]
+      - paragraph [ref=f3e271]: Conecta tu cuenta para que el agente pueda leer tus correos (solo lectura).
+      - link [ref=f3e274] [cursor=pointer]:
+        - /url: https://accounts.google.com/o/oauth2/auth?response_type=code&client_id=675760379958-qjligg43kkgsja9f4hpbea9emr1q02bn.apps.googleusercontent.com&redirect_uri=http%3A%2F%2Flocalhost%3A8501&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.readonly&state=eefV3AuE1nORyaTOMPKHqm6pbdr6P0&code_challenge=Dne-N-xoGa_viISkAkvaL-stV7ndfQuYc_0BPKwz1Jw&code_challenge_method=S256&access_type=online&prompt=select_account
+        - generic [ref=f3e276]:
+          - generic [aria-hidden] [ref=f3e278]: mail
+          - paragraph [ref=f3e281]: Conectar Gmail
+      - separator [ref=f3e286]
+      - heading "Tus documentos" [level=4] [ref=f3e291]
+      - region "Sube un documento" [ref=f3e294] [cursor=pointer]:
+        - button "file upload"
+        - button [ref=f3e296]:
+          - generic [ref=f3e298]:
+            - generic [aria-hidden] [ref=f3e300]: upload
+            - paragraph [ref=f3e303]: Upload
+        - generic [ref=f3e304]: 200MB per file • PDF, DOCX, TXT, MD
+      - generic [ref=f3e308]:
+        - paragraph [ref=f3e315]:
+          - img "check_circle icon" [ref=f3e316]: check_circle
+          - code [ref=f3e317]: el-extranjero.pdf
+        - button "sync icon" [ref=f3e325] [cursor=pointer]:
+          - generic [ref=f3e327]:
+            - generic [ref=f3e328]: sync icon
+            - generic [aria-hidden] [ref=f3e330]: sync
+      - generic [ref=f3e332]:
+        - paragraph [ref=f3e339]:
+          - img "description icon" [ref=f3e340]: description
+          - code [ref=f3e341]: el-largo-viaje.pdf
+        - button "upload icon" [ref=f3e349] [cursor=pointer]:
+          - generic [ref=f3e351]:
+            - generic [ref=f3e352]: upload icon
+            - generic [aria-hidden] [ref=f3e354]: upload
+      - generic [ref=f3e356]:
+        - paragraph [ref=f3e363]:
+          - img "check_circle icon" [ref=f3e364]: check_circle
+          - code [ref=f3e365]: patitofeo.pdf
+        - button "sync icon" [ref=f3e373] [cursor=pointer]:
+          - generic [ref=f3e375]:
+            - generic [ref=f3e376]: sync icon
+            - generic [aria-hidden] [ref=f3e378]: sync
+      - paragraph [ref=f3e383]:
+        - text: Pulsa
+        - img "upload icon" [ref=f3e384]: upload
+        - text: "para indexar un documento. Luego pregúntale:"
+        - emphasis [ref=f3e385]: ¿Qué dice el documento sobre ...?
+        - text: o
+        - emphasis [ref=f3e386]: Resúmeme el documento ...
+  - generic [ref=f3e4]:
+    - banner
+    - main [ref=f3e389]:
+      - generic [ref=f3e391]:
+        - generic [ref=f3e394]:
+          - heading "¿Qué quieres investigar?" [level=1] [ref=f3e395]
+          - paragraph [ref=f3e396]: Busco en internet, leo las páginas y te respondo con las fuentes. También resumo tus documentos y leo tus correos.
+        - generic [ref=f3e398]:
+          - button [ref=f3e403] [cursor=pointer]:
+            - paragraph [ref=f3e408]: ¿Qué es LangGraph y para qué sirve?
+          - button [ref=f3e413] [cursor=pointer]:
+            - paragraph [ref=f3e418]: Investiga las últimas noticias sobre inteligencia artificial
+          - button [ref=f3e423] [cursor=pointer]:
+            - paragraph [ref=f3e428]: ¿Cuáles son los principios del Zen de Python?
+      - generic [ref=f3e437]:
+        - textbox "Escribe o pulsa el micrófono para hablar..." [ref=f3e439]
+        - generic [ref=f3e440]:
+          - button "Start recording" [ref=f3e441] [cursor=pointer]
+          - button "Send message" [disabled] [ref=f3e445]
