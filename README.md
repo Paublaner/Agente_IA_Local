@@ -257,7 +257,7 @@ Las herramientas de Gmail **empezaron en el servidor MCP**, pero se sacaron de a
 
 ## Instalación
 
-Necesitas Python 3.10+, [Ollama](https://ollama.com), **Google Chrome** y una base de datos **PostgreSQL con la extensión pgvector** (ver [Configurar la base de datos](#configurar-la-base-de-datos)). Para Gmail, además, un proyecto en Google Cloud (ver [Configurar Gmail](#configurar-gmail)); para LinkedIn por API, una cuenta de Composio (ver [Configurar Composio](#configurar-composio)).
+Necesitas Python 3.10+, [Ollama](https://ollama.com), **Google Chrome** y **Docker** para la base de datos **PostgreSQL con pgvector** (ver [Configurar la base de datos](#configurar-la-base-de-datos)). Para Gmail, además, un proyecto en Google Cloud (ver [Configurar Gmail](#configurar-gmail)); para LinkedIn por API, una cuenta de Composio (ver [Configurar Composio](#configurar-composio)).
 
 ```bash
 # 1. Descargar los modelos
@@ -268,9 +268,10 @@ ollama pull bge-m3
 python -m venv .venv
 .venv\Scripts\activate        # en Windows
 pip install -r requirements.txt
-pip install psycopg[binary] langchain-postgres langgraph-checkpoint-postgres   # si no están ya en requirements.txt
 
-# 3. Arrancar la interfaz
+# 3. Arrancar Postgres en Docker (ver "Configurar la base de datos")
+
+# 4. Arrancar la interfaz
 streamlit run app.py
 ```
 
@@ -293,20 +294,24 @@ Ejemplos de lo que le puedes pedir:
 
 ### Configurar la base de datos
 
-La memoria, la lista de conversaciones y los vectores de los documentos van en **PostgreSQL** con la extensión **pgvector** (vale una base de datos en local o una gratuita en la nube que tenga pgvector).
+La memoria, la lista de conversaciones y los vectores de los documentos van en **PostgreSQL** con la extensión **pgvector**, que se arranca en **Docker**. Por ejemplo, con la imagen oficial de pgvector:
 
-Crea `agente/base_datos.py` (no se sube a git, porque lleva la contraseña de la base de datos) con:
-
-```python
-import psycopg
-from psycopg.rows import dict_row
-
-URL = "postgresql://usuario:contraseña@servidor:5432/basededatos"
-URL_VECTOR = "postgresql+psycopg://usuario:contraseña@servidor:5432/basededatos"   # la misma, con el formato de SQLAlchemy
-
-conexion_memoria = psycopg.connect(URL, autocommit=True, row_factory=dict_row)   # para PostgresSaver
-conexion = psycopg.connect(URL, autocommit=True, row_factory=dict_row)           # para las consultas propias
+```bash
+docker run -d --name agente-postgres -e POSTGRES_PASSWORD=tu_contraseña -p 5432:5432 pgvector/pgvector:pg17
 ```
+
+**Antes de arrancar la app, el contenedor tiene que estar en marcha** (`docker start agente-postgres` las siguientes veces). Si no, la app se queda esperando al conectar, sin dar error.
+
+Las dos direcciones de la base de datos van en el `.env`, junto a las de Composio:
+
+```
+DATABASE_URL=postgresql://usuario:contraseña@localhost:5432/basededatos
+URL_VECTOR=postgresql+psycopg://usuario:contraseña@localhost:5432/basededatos
+```
+
+Son la misma base de datos escrita de dos formas: `DATABASE_URL` la usa `psycopg` directamente (memoria y consultas propias), y `URL_VECTOR` lleva el `+psycopg` que pide `PGVector`, porque va por SQLAlchemy.
+
+`agente/base_datos.py` las lee con `load_dotenv()` y `os.getenv`, y abre dos conexiones: `conexion_memoria` para `PostgresSaver` y `conexion` para las consultas propias. Así la contraseña no está escrita en el código.
 
 Las tablas se crean solas al arrancar: `memory.setup()` crea las del checkpointer, `agente_grafo.py` crea `conversaciones` y `PGVector` crea las suyas (`langchain_pg_collection` y `langchain_pg_embedding`) la primera vez que indexas un documento.
 
@@ -397,9 +402,9 @@ Resultado: copia los 19 principios igual que en la fuente y solo dice que ha gua
 
 | Archivo o carpeta | Por qué |
 |---|---|
-| `.env` | Claves de Composio y otras APIs. |
+| `.env` | Claves de Composio y direcciones (con contraseña) de la base de datos PostgreSQL, donde están las conversaciones, incluido lo que el agente ha leído de tus correos. |
 | `.streamlit/secrets.toml` | Cliente OAuth de Google. |
-| `agente/base_datos.py` | Dirección y contraseña de la base de datos PostgreSQL (donde están las conversaciones, incluido lo que el agente ha leído de tus correos). |
+| `agente/base_datos.py` | Antes tenía la contraseña escrita. Ya la lee del `.env`, así que se puede quitar del `.gitignore`. |
 | `datos/user_data_dir/` | Perfil de Chrome con las cookies: con él se entra en tus cuentas sin contraseña. |
 | `datos/memoria.db` | La memoria antigua en SQLite (de antes de pasar a Postgres). |
 | `datos/documentos/*` | Tus documentos. |
@@ -414,7 +419,7 @@ Agente_IA/
 ├── app.py                   # Interfaz de chat con Streamlit (punto de entrada)
 ├── README.md
 ├── requirements.txt
-├── .env                     # Claves de Composio (no se sube a git)
+├── .env                     # Claves de Composio y URLs de la base de datos (no se sube a git)
 ├── .streamlit/
 │   ├── config.toml          # Tema de la interfaz (color, bordes, menú)
 │   └── secrets.toml         # Cliente OAuth de Google (no se sube a git)
@@ -424,7 +429,7 @@ Agente_IA/
 │   ├── agente_grafo.py      # Grafo de LangGraph: nodos, interrupt, memoria, lista de conversaciones
 │   ├── instrucciones.py     # Prompt de sistema del agente
 │   ├── herramientas.py      # Herramientas @tool del agente (Gmail, navegador y RAG de documentos incluidos)
-│   └── base_datos.py        # Conexiones a PostgreSQL (no se sube a git)
+│   └── base_datos.py        # Conexiones a PostgreSQL (lee las URLs del .env)
 ├── integraciones/           # Servicios externos
 │   ├── auth_gmail.py        # Inicio de sesión con Google: cada usuario conecta su Gmail
 │   ├── gmail.py             # Lógica de Gmail: buscar, leer y sacar el texto de los correos
@@ -504,8 +509,10 @@ python -m versiones_anteriores.agente1
 - [x] Aprobación humana (`interrupt`) antes de clicar, escribir o ejecutar algo en Composio
 - [x] RAG sobre los documentos del usuario con PostgreSQL + pgvector
 - [x] Varias conversaciones guardadas (abrir y borrar desde la barra lateral)
-- [ ] Añadir `psycopg`, `langchain-postgres` y `langgraph-checkpoint-postgres` a `requirements.txt`
-- [ ] Leer la dirección de la base de datos del `.env` en vez de escribirla en `base_datos.py`
+- [x] Añadir `psycopg`, `langchain-postgres` y `langgraph-checkpoint-postgres` a `requirements.txt`
+- [x] Leer la dirección de la base de datos del `.env` en vez de escribirla en `base_datos.py`
+- [ ] Quitar `agente/base_datos.py` del `.gitignore` y subirlo (ya no tiene secretos)
+- [ ] Avisar con un error claro si falta `DATABASE_URL` o `URL_VECTOR` en el `.env`, o si Postgres no está arrancado
 - [ ] Bloquear en código (en `node_herramientas` o en `clicar`) lo que hoy solo prohíben las instrucciones: publicar por Composio, clicar en campos de texto (con la aprobación humana ya no pasa sin que lo veas, y en modo grabación ya se bloquea publicar)
 - [ ] Pulir `iniciar_sesion_manual` (mensaje cuando ya había sesión, constante para el tiempo de espera)
 - [ ] Volver a cargar `fecha_hora` del servidor MCP propio junto a Composio
