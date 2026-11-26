@@ -214,7 +214,6 @@ def clicar(numero: int):
     el = ELEMENTOS[numero - 1]
     nombre = nombre_elemento(el)
 
-    # Solo durante las grabaciones de demo (GRABAR_NAVEGADOR): nunca pulsar botones que publican o envían
     if os.environ.get("GRABAR_NAVEGADOR") and re.search(r"\b(publicar|post|enviar|send|compartir|share)\b", str(nombre), re.IGNORECASE):
         return f'Bloqueado: [{numero}] "{nombre}" publica o envía, y eso lo hace el usuario. Deja el texto escrito y PARA.'
 
