@@ -511,7 +511,7 @@ python -m versiones_anteriores.agente1
 - [x] Varias conversaciones guardadas (abrir y borrar desde la barra lateral)
 - [x] Añadir `psycopg`, `langchain-postgres` y `langgraph-checkpoint-postgres` a `requirements.txt`
 - [x] Leer la dirección de la base de datos del `.env` en vez de escribirla en `base_datos.py`
-- [ ] Quitar `agente/base_datos.py` del `.gitignore` y subirlo (ya no tiene secretos)
+- [x] Quitar `agente/base_datos.py` del `.gitignore` y subirlo (ya no tiene secretos)
 - [ ] Avisar con un error claro si falta `DATABASE_URL` o `URL_VECTOR` en el `.env`, o si Postgres no está arrancado
 - [ ] Bloquear en código (en `node_herramientas` o en `clicar`) lo que hoy solo prohíben las instrucciones: publicar por Composio, clicar en campos de texto (con la aprobación humana ya no pasa sin que lo veas, y en modo grabación ya se bloquea publicar)
 - [ ] Pulir `iniciar_sesion_manual` (mensaje cuando ya había sesión, constante para el tiempo de espera)
